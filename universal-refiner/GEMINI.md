@@ -23,3 +23,8 @@ This file defines the engineering mandates and standards for the Gemini Prompt R
 - **ID**: `type-safety-solid`
 - **Category**: `Development Standards`
 - **Description**: Adhere to strict TypeScript typing; avoid `any` unless absolutely necessary. Rigorously apply SOLID and SRP (Single Responsibility Principle) across the codebase. Each module, class, and function should have one clear responsibility, facilitating maintainability and extensibility.
+
+## 5. Gapless Traceability & Real-time Audit
+- **ID**: `gapless-traceability`
+- **Category**: `Architecture`
+- **Description**: All repository changes (commits) and agent outcomes (executions) MUST be logged to the Event Store and emitted to the Command Center Dashboard in real-time. This ensures a complete, verifiable audit trail from prompt intent to final code artifact.
