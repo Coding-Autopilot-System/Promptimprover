@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "BeforeAgent": [
+      {
+        "hooks": [
+          {
+            "name": "refine-prompt",
+            "type": "command",
+            "command": "node C:/repo/Promptimprover/gemini-extension/dist/hooks/refine_hook.js"
+          }
+        ]
+      }
+    ]
+  }
+}

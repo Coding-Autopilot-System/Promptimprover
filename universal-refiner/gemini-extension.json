@@ -1,0 +1,11 @@
+{
+  "name": "prompt-refiner",
+  "version": "1.0.0",
+  "description": "Cross-CLI prompt refinement using an MCP server.",
+  "mcpServers": {
+    "prompt-refiner": {
+      "command": "node",
+      "args": ["C:/repo/Promptimprover/universal-refiner/dist/src/index.js"]
+    }
+  }
+}

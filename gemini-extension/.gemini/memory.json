@@ -1,0 +1,10 @@
+{
+  "patterns": [
+    {
+      "id": "jwt-auth",
+      "category": "security",
+      "description": "In this project, we use JWT authentication exclusively in the HTTP Authorization header (Bearer token). Never use cookies for auth.",
+      "learnedAt": "2026-04-08T01:07:38.128Z"
+    }
+  ]
+}

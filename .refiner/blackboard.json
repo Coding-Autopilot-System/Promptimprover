@@ -1,0 +1,264 @@
+{
+  "activeIntents": [
+    {
+      "agentName": "User CLI",
+      "toolType": "lint",
+      "intent": "run git init",
+      "timestamp": "2026-04-17T14:31:36.540Z",
+      "expiresAt": "2026-04-17T15:01:36.540Z",
+      "projectPath": "C:\\repo\\Promptimprover"
+    }
+  ],
+  "logs": [
+    {
+      "timestamp": "2026-04-17T14:31:36.700Z",
+      "message": "MCP Call: create_questions",
+      "projectPath": "C:\\repo\\Promptimprover"
+    },
+    {
+      "timestamp": "2026-04-17T14:31:36.686Z",
+      "message": "Found 3 total gaps (Rule: 3, Semantic: 0).",
+      "projectPath": "C:\\repo\\Promptimprover"
+    },
+    {
+      "timestamp": "2026-04-17T14:31:36.685Z",
+      "message": "Semantic Analysis skipped; using rule-based linting only.",
+      "projectPath": "C:\\repo\\Promptimprover"
+    },
+    {
+      "timestamp": "2026-04-17T14:31:36.685Z",
+      "message": "Semantic Intelligence unavailable: Client/runtime does not implement MCP sampling/createMessage.",
+      "projectPath": "C:\\repo\\Promptimprover"
+    },
+    {
+      "timestamp": "2026-04-17T14:31:36.680Z",
+      "message": "Executing Semantic Intelligence Analysis...",
+      "projectPath": "C:\\repo\\Promptimprover"
+    },
+    {
+      "timestamp": "2026-04-17T14:31:36.540Z",
+      "message": "Scouting project for prompt: \"run git init...\"",
+      "projectPath": "C:\\repo\\Promptimprover"
+    },
+    {
+      "timestamp": "2026-04-17T14:31:36.540Z",
+      "message": "Agent [User CLI] intent: run git init...",
+      "projectPath": "C:\\repo\\Promptimprover"
+    },
+    {
+      "timestamp": "2026-04-17T14:31:36.539Z",
+      "message": "MCP Call: lint_prompt",
+      "projectPath": "C:\\repo\\Promptimprover"
+    },
+    {
+      "timestamp": "2026-04-17T14:31:36.518Z",
+      "message": "Background Autonomy: Watching for changes...",
+      "projectPath": "C:\\repo\\Promptimprover"
+    },
+    {
+      "timestamp": "2026-04-17T14:28:56.189Z",
+      "message": "MCP Call: create_questions",
+      "projectPath": "C:\\repo\\Promptimprover"
+    },
+    {
+      "timestamp": "2026-04-17T14:28:56.178Z",
+      "message": "Found 3 total gaps (Rule: 3, Semantic: 0).",
+      "projectPath": "C:\\repo\\Promptimprover"
+    },
+    {
+      "timestamp": "2026-04-17T14:28:56.177Z",
+      "message": "Semantic Analysis skipped; using rule-based linting only.",
+      "projectPath": "C:\\repo\\Promptimprover"
+    },
+    {
+      "timestamp": "2026-04-17T14:28:56.176Z",
+      "message": "Semantic Intelligence unavailable: Client/runtime does not implement MCP sampling/createMessage.",
+      "projectPath": "C:\\repo\\Promptimprover"
+    },
+    {
+      "timestamp": "2026-04-17T14:28:56.167Z",
+      "message": "Executing Semantic Intelligence Analysis...",
+      "projectPath": "C:\\repo\\Promptimprover"
+    },
+    {
+      "timestamp": "2026-04-17T14:28:56.042Z",
+      "message": "Scouting project for prompt: \"commit...\"",
+      "projectPath": "C:\\repo\\Promptimprover"
+    },
+    {
+      "timestamp": "2026-04-17T14:28:56.041Z",
+      "message": "Agent [User CLI] intent: commit...",
+      "projectPath": "C:\\repo\\Promptimprover"
+    },
+    {
+      "timestamp": "2026-04-17T14:28:56.040Z",
+      "message": "MCP Call: lint_prompt",
+      "projectPath": "C:\\repo\\Promptimprover"
+    },
+    {
+      "timestamp": "2026-04-17T14:28:56.019Z",
+      "message": "Background Autonomy: Watching for changes...",
+      "projectPath": "C:\\repo\\Promptimprover"
+    },
+    {
+      "timestamp": "2026-04-17T14:26:04.531Z",
+      "message": "MCP Call: create_questions",
+      "projectPath": "C:\\repo\\Promptimprover"
+    },
+    {
+      "timestamp": "2026-04-17T14:26:04.517Z",
+      "message": "Found 3 total gaps (Rule: 3, Semantic: 0).",
+      "projectPath": "C:\\repo\\Promptimprover"
+    },
+    {
+      "timestamp": "2026-04-17T14:26:04.516Z",
+      "message": "Semantic Analysis skipped; using rule-based linting only.",
+      "projectPath": "C:\\repo\\Promptimprover"
+    },
+    {
+      "timestamp": "2026-04-17T14:26:04.515Z",
+      "message": "Semantic Intelligence unavailable: Client/runtime does not implement MCP sampling/createMessage.",
+      "projectPath": "C:\\repo\\Promptimprover"
+    },
+    {
+      "timestamp": "2026-04-17T14:26:04.508Z",
+      "message": "Executing Semantic Intelligence Analysis...",
+      "projectPath": "C:\\repo\\Promptimprover"
+    },
+    {
+      "timestamp": "2026-04-17T14:26:04.355Z",
+      "message": "Scouting project for prompt: \"CAn you make a aommit locally ...\"",
+      "projectPath": "C:\\repo\\Promptimprover"
+    },
+    {
+      "timestamp": "2026-04-17T14:26:04.355Z",
+      "message": "Agent [User CLI] intent: CAn you make a aommit locally ?...",
+      "projectPath": "C:\\repo\\Promptimprover"
+    },
+    {
+      "timestamp": "2026-04-17T14:26:04.354Z",
+      "message": "MCP Call: lint_prompt",
+      "projectPath": "C:\\repo\\Promptimprover"
+    },
+    {
+      "timestamp": "2026-04-17T14:26:04.335Z",
+      "message": "Background Autonomy: Watching for changes...",
+      "projectPath": "C:\\repo\\Promptimprover"
+    },
+    {
+      "timestamp": "2026-04-17T14:20:45.649Z",
+      "message": "MCP Call: create_questions",
+      "projectPath": "C:\\repo\\Promptimprover"
+    },
+    {
+      "timestamp": "2026-04-17T14:20:45.639Z",
+      "message": "Found 4 total gaps (Rule: 4, Semantic: 0).",
+      "projectPath": "C:\\repo\\Promptimprover"
+    },
+    {
+      "timestamp": "2026-04-17T14:20:45.638Z",
+      "message": "Semantic Analysis skipped; using rule-based linting only.",
+      "projectPath": "C:\\repo\\Promptimprover"
+    },
+    {
+      "timestamp": "2026-04-17T14:20:45.638Z",
+      "message": "Semantic Intelligence unavailable: Client/runtime does not implement MCP sampling/createMessage.",
+      "projectPath": "C:\\repo\\Promptimprover"
+    },
+    {
+      "timestamp": "2026-04-17T14:20:45.629Z",
+      "message": "Executing Semantic Intelligence Analysis...",
+      "projectPath": "C:\\repo\\Promptimprover"
+    },
+    {
+      "timestamp": "2026-04-17T14:20:45.494Z",
+      "message": "Scouting project for prompt: \"Where I can see these    Final...\"",
+      "projectPath": "C:\\repo\\Promptimprover"
+    },
+    {
+      "timestamp": "2026-04-17T14:20:45.493Z",
+      "message": "Agent [User CLI] intent: Where I can see these    Final Summary:\n   - Visib...",
+      "projectPath": "C:\\repo\\Promptimprover"
+    },
+    {
+      "timestamp": "2026-04-17T14:20:45.492Z",
+      "message": "MCP Call: lint_prompt",
+      "projectPath": "C:\\repo\\Promptimprover"
+    },
+    {
+      "timestamp": "2026-04-17T14:20:45.470Z",
+      "message": "Background Autonomy: Watching for changes...",
+      "projectPath": "C:\\repo\\Promptimprover"
+    },
+    {
+      "timestamp": "2026-04-17T14:20:32.455Z",
+      "message": "MCP Call: create_questions",
+      "projectPath": "C:\\repo\\Promptimprover"
+    },
+    {
+      "timestamp": "2026-04-17T14:20:32.442Z",
+      "message": "Found 4 total gaps (Rule: 4, Semantic: 0).",
+      "projectPath": "C:\\repo\\Promptimprover"
+    },
+    {
+      "timestamp": "2026-04-17T14:20:32.441Z",
+      "message": "Semantic Analysis skipped; using rule-based linting only.",
+      "projectPath": "C:\\repo\\Promptimprover"
+    },
+    {
+      "timestamp": "2026-04-17T14:20:32.440Z",
+      "message": "Semantic Intelligence unavailable: Client/runtime does not implement MCP sampling/createMessage.",
+      "projectPath": "C:\\repo\\Promptimprover"
+    },
+    {
+      "timestamp": "2026-04-17T14:20:32.433Z",
+      "message": "Executing Semantic Intelligence Analysis...",
+      "projectPath": "C:\\repo\\Promptimprover"
+    },
+    {
+      "timestamp": "2026-04-17T14:20:32.291Z",
+      "message": "Scouting project for prompt: \"Final Summary:\n   - Visibility...\"",
+      "projectPath": "C:\\repo\\Promptimprover"
+    },
+    {
+      "timestamp": "2026-04-17T14:20:32.291Z",
+      "message": "Agent [User CLI] intent: Final Summary:\n   - Visibility to Every Commit: Th...",
+      "projectPath": "C:\\repo\\Promptimprover"
+    },
+    {
+      "timestamp": "2026-04-17T14:20:32.290Z",
+      "message": "MCP Call: lint_prompt",
+      "projectPath": "C:\\repo\\Promptimprover"
+    },
+    {
+      "timestamp": "2026-04-17T14:20:32.272Z",
+      "message": "Background Autonomy: Watching for changes...",
+      "projectPath": "C:\\repo\\Promptimprover"
+    },
+    {
+      "timestamp": "2026-04-17T11:56:14.116Z",
+      "message": "Background Autonomy: Lesson extraction complete.",
+      "projectPath": "C:\\repo\\Promptimprover"
+    },
+    {
+      "timestamp": "2026-04-17T11:56:14.114Z",
+      "message": "Background Autonomy: Correlation complete.",
+      "projectPath": "C:\\repo\\Promptimprover"
+    },
+    {
+      "timestamp": "2026-04-17T11:56:14.115Z",
+      "message": "Background Autonomy: Lesson extraction complete.",
+      "projectPath": "C:\\repo\\Promptimprover"
+    },
+    {
+      "timestamp": "2026-04-17T11:56:14.114Z",
+      "message": "Background Autonomy: Correlation complete.",
+      "projectPath": "C:\\repo\\Promptimprover"
+    },
+    {
+      "timestamp": "2026-04-17T11:56:14.109Z",
+      "message": "Background Autonomy: Ingested 0 commits.",
+      "projectPath": "C:\\repo\\Promptimprover"
+    }
+  ]
+}
