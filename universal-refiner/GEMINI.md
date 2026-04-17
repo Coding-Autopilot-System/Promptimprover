@@ -28,3 +28,8 @@ This file defines the engineering mandates and standards for the Gemini Prompt R
 - **ID**: `gapless-traceability`
 - **Category**: `Architecture`
 - **Description**: All repository changes (commits) and agent outcomes (executions) MUST be logged to the Event Store and emitted to the Command Center Dashboard in real-time. This ensures a complete, verifiable audit trail from prompt intent to final code artifact.
+
+## 6. Optimized Background Autonomy
+- **ID**: `background-autonomy-opt`
+- **Category**: `Performance`
+- **Description**: Background tasks (ingestion, correlation, lesson extraction) MUST run in parallel using `Promise.allSettled` to prevent slow LLM sampling/timeouts from blocking critical history ingestion.
