@@ -9,6 +9,8 @@ PromptImprover is a centralized middleware layer built using the **Model Context
 - **Compounding Memory**: A persistent local "Brain" that learns project-specific rules and history over time.
 - **Auto-Heal Middleware**: Intercepts tool errors and autonomously fixes them using a specialist "Healer" agent.
 - **Context-Aware Scouting**: Automatically detects tech stacks (Node, Python, Go) and architectural patterns.
+- **Robust Commit Tracking**: Dynamically fetches and correlates gapless repository history.
+- **Agent Output Logging**: Tracks the final outcome of agent executions via unique Prompt IDs.
 
 ## 📦 Project Structure
 - `/universal-refiner`: The core MCP server and Gemini CLI extension.
