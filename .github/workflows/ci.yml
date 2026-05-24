@@ -29,4 +29,6 @@ jobs:
         run: npx tsc --noEmit
 
       - name: Run tests
-        run: npx vitest run
+        run: |
+          chmod +x node_modules/.bin/vitest 2>/dev/null || true
+          node_modules/.bin/vitest run
