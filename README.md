@@ -1,25 +1,47 @@
-﻿# PromptImprover: Universal AI Governance & Refinement
-**Enterprise-Grade MCP Server for Intelligent Prompt Engineering**
+# Promptimprover
 
-## 🚀 Overview
-PromptImprover is a centralized middleware layer built using the **Model Context Protocol (MCP)**. It ensures that every instruction sent to an AI Agent (Claude, Gemini, Codex) is automatically refined to follow modern engineering standards (SOLID, SRP, OWASP) before code generation begins.
+[![CI](https://github.com/Coding-Autopilot-System/Promptimprover/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/Coding-Autopilot-System/Promptimprover/actions/workflows/ci.yml)
+[![Node 22](https://img.shields.io/badge/node-22-brightgreen)](https://nodejs.org/)
+[![MIT License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-## 🛠️ Key Features
-- **Neural Snippets (RAG)**: Automatically retrieves relevant code examples from your local codebase to ensure style consistency.
-- **Compounding Memory**: A persistent local "Brain" that learns project-specific rules and history over time.
-- **Auto-Heal Middleware**: Intercepts tool errors and autonomously fixes them using a specialist "Healer" agent.
-- **Context-Aware Scouting**: Automatically detects tech stacks (Node, Python, Go) and architectural patterns.
-- **Robust Commit Tracking**: Dynamically fetches and correlates gapless repository history.
-- **Agent Output Logging**: Tracks the final outcome of agent executions via unique Prompt IDs.
+Part of the [Coding-Autopilot-System](https://github.com/Coding-Autopilot-System) ecosystem:
+[gsd-orchestrator](https://github.com/Coding-Autopilot-System/gsd-orchestrator) | [autogen](https://github.com/Coding-Autopilot-System/autogen)
 
-## 📦 Project Structure
-- `/universal-refiner`: The core MCP server and Gemini CLI extension.
-- `/archive`: Deprecated versions and old server logic.
+Promptimprover is an MCP server middleware that intercepts and refines every AI prompt before code generation — applying project context, coding standards, and compounding memory.
 
-## 📥 Installation
-To install the refiner globally on your machine:
-1. Run `.\build_and_install.ps1` from the root.
-2. Add to your AI tool (Claude/Cursor) as an MCP server with the command `prompt-refiner`.
+## Features
 
-## 📄 Compliance
-This project is designed to align with **ISO 27001** standards for secure software development and AI governance.
+- **RAG neural snippets** — FlexSearch-based retrieval over the local codebase; injects relevant code examples into every prompt
+- **Compounding memory** — SQLite-backed pattern store accumulates project-specific rules and standards learned over time
+- **Auto-heal middleware** — background file watcher triggers commit ingestion and lesson extraction; keeps context current without manual intervention
+- **Context-aware project scouting** — NodeDetector, PythonDetector, and ArchitecturalScout identify tech stack and patterns at startup
+
+## Architecture
+
+```mermaid
+flowchart LR
+    CLI["AI CLI\n(Claude / Cursor)"] -->|"stdio"| PI["Promptimprover\n(prompt-refiner)"]
+    subgraph internal["Promptimprover Engine"]
+        RAG["RAG Snippets\n(FlexSearch)"]
+        Memory["SQLite Memory\n(LocalBrain)"]
+        AutoHeal["Auto-Heal\n(BackgroundService)"]
+    end
+    PI --> RAG
+    PI --> Memory
+    PI --> AutoHeal
+    internal --> Out["Augmented Prompt"]
+```
+
+## Quickstart
+
+```powershell
+git clone https://github.com/Coding-Autopilot-System/Promptimprover.git
+cd Promptimprover
+.\build_and_install.ps1
+```
+
+Add `prompt-refiner` to your MCP client configuration. See the [Setup Guide](https://github.com/Coding-Autopilot-System/Promptimprover/wiki/Setup-Guide) for full configuration instructions.
+
+## License
+
+MIT — see [LICENSE](LICENSE)
