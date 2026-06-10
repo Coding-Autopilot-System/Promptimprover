@@ -2,12 +2,20 @@ name: CI
 
 on:
   push:
-    branches: [ master ]
+    branches: [master]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
-  build-and-test:
-    runs-on: ubuntu-latest
+  build-test-package:
+    name: Node 22 / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
     defaults:
       run:
         working-directory: universal-refiner
@@ -18,20 +26,23 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+          cache: npm
+          cache-dependency-path: universal-refiner/package-lock.json
 
       - name: Install dependencies
-        run: npm install --no-fund
+        run: npm ci --no-fund
 
-      - name: Rebuild native modules
-        run: npm rebuild better-sqlite3
-
-      - name: Generate version file
-        run: node scripts/sync-version.mjs
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
 
       - name: Type check
         run: npx tsc --noEmit
 
       - name: Run tests
-        run: |
-          chmod +x node_modules/.bin/vitest 2>/dev/null || true
-          node_modules/.bin/vitest run --exclude '**/correlation.test.ts'
+        run: npm test
+
+      - name: Build package
+        run: npm run build
+
+      - name: Validate package contents
+        run: npm pack --dry-run
