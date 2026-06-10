@@ -33,9 +33,9 @@ export class CorrelationEngine {
     const candidates = db.prepare(`
       SELECT * FROM prompts
       WHERE repo_id = ? 
-      AND timestamp < ?
-      AND timestamp > datetime(?, '-2 hours')
-      ORDER BY timestamp DESC
+      AND julianday(timestamp) < julianday(?)
+      AND julianday(timestamp) > julianday(?, '-2 hours')
+      ORDER BY julianday(timestamp) DESC
     `).all(commit.repo_id, commit.committed_at, commit.committed_at);
 
     if (candidates.length === 0) return null;
@@ -93,7 +93,7 @@ export class CorrelationEngine {
         score -= 40;
       }
 
-      if (score > highestScore && score > 60) { // Slightly higher threshold (60) for file-aware matching
+      if (score > highestScore && score >= 50) { // Require at least a strong proximity or content match
         highestScore = score;
         bestMatch = prompt;
       }
