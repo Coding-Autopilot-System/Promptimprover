@@ -14,8 +14,8 @@
 | F-04 | Build uses Windows-only shell commands | High | Auto-fixable | Fixed in `6420017` |
 | F-05 | CI skips a test and does not validate build/package or Windows | High | Auto-fixable, push-blocked | Fixed locally in `audit/promptimprover-full-enterprise-local`; GitHub rejected workflow push because OAuth lacks `workflow` scope |
 | F-06 | Git tracks dependencies, generated outputs, runtime memory, and archives | High | Auto-fixable | Fixed in `69561f8` |
-| F-07 | Dashboard network binding is not explicitly loopback-only | High | Auto-fixable | Fixed in `ed20725` |
-| F-08 | Installer is Windows-only and lacks fail-fast validation | Medium | Auto-fixable | Fixed in `b954a3c` |
+| F-07 | Dashboard network binding is not explicitly loopback-only | High | Auto-fixable | Fixed in `9806a26` |
+| F-08 | Installer is Windows-only and lacks fail-fast validation | Medium | Auto-fixable | Fixed in `77c8de3` |
 
 ## Verification
 
