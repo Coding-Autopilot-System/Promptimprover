@@ -8,7 +8,7 @@
             },
     "scripts":  {
                     "prebuild":  "node scripts/sync-version.mjs",
-                    "build":  "tsc \u0026\u0026 (if not exist dist\\src\\core mkdir dist\\src\\core) \u0026\u0026 copy src\\core\\dashboard.html dist\\src\\core\\dashboard.html /Y",
+                    "build":  "tsc \u0026\u0026 node scripts/copy-dashboard.mjs",
                     "start":  "node dist/src/index.js",
                     "dev":  "ts-node src/index.ts",
                     "pretest":  "node scripts/sync-version.mjs",
