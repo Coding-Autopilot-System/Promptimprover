@@ -14,6 +14,10 @@ import { EventStore } from "../history/event-store.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+export function resolveDashboardHost(configuredHost = process.env.PROMPT_REFINER_DASHBOARD_HOST): string {
+  return configuredHost?.trim() || "127.0.0.1";
+}
+
 interface DashboardState {
   selectedPath: string;
   projects: string[];
@@ -225,7 +229,7 @@ export class CommandCenterDashboard {
     });
 
     try {
-      const server = serve({ fetch: app.fetch, port });
+      const server = serve({ fetch: app.fetch, port, hostname: resolveDashboardHost() });
       server.on("error", (e: any) => {
         if (e.code === "EADDRINUSE") {
           console.error(`[Command Center] Port ${port} taken.`);
