@@ -42,7 +42,7 @@ That distinction matters because this repo is about credible system direction, n
 
 ```mermaid
 flowchart LR
-    CLI["AI CLI\n(Claude / Cursor)"] -->|"stdio"| PI["PromptImprover\n(prompt-refiner)"]
+    CLI["AI CLI\n(Claude / Cursor)"] -->|"stdio"| PI["PromptImprover\n(gemini-prompt-refiner)"]
     subgraph internal["PromptImprover Engine"]
         RAG["RAG Snippets\n(FlexSearch)"]
         Memory["SQLite Memory\n(LocalBrain)"]
@@ -69,7 +69,7 @@ cd Promptimprover
 .\build_and_install.ps1
 ```
 
-Add `prompt-refiner` to your MCP client configuration. See the [Setup Guide](https://github.com/Coding-Autopilot-System/Promptimprover/wiki/Setup-Guide) for full configuration instructions.
+Add `gemini-prompt-refiner` to your MCP client configuration. See the [Setup Guide](https://github.com/Coding-Autopilot-System/Promptimprover/wiki/Setup-Guide) for full configuration instructions.
 
 ## License
 

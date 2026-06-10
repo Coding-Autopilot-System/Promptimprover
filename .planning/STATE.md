@@ -27,5 +27,12 @@
 ### Blockers
 - None.
 
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Status | Directory |
+|---|-------------|------|--------|--------|-----------|
+| 260610-pps | Fix PR #1 review blocker: README and build_and_install.ps1 must accurately document the globally exposed gemini-prompt-refiner command | 2026-06-10 | this commit | Verified | [260610-pps-fix-pr-1-review-blocker-readme-and-build](./quick/260610-pps-fix-pr-1-review-blocker-readme-and-build/) |
+
 ## Session Continuity
+Last activity: 2026-06-10 - Completed quick task 260610-pps: Fix PR #1 command documentation blocker.
 The project is set up with a clear 3-phase roadmap. Next step is to begin planning Phase 1.
