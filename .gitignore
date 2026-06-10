@@ -1,0 +1,26 @@
+# Dependencies and generated outputs
+**/node_modules/
+**/dist/
+*.tgz
+
+# Runtime state and local databases
+.refiner/
+**/.refiner/
+.gemini/memory.json
+**/.gemini/memory.json
+**/.gemini/blackboard.json
+*.db
+*.db-shm
+*.db-wal
+*.log
+
+# Local configuration and environment
+.env
+.env.*
+!.env.example
+
+# Editor and OS artifacts
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
