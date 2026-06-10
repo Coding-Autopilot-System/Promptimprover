@@ -69,7 +69,15 @@ cd Promptimprover
 .\build_and_install.ps1
 ```
 
-Add `gemini-prompt-refiner` to your MCP client configuration. See the [Setup Guide](https://github.com/Coding-Autopilot-System/Promptimprover/wiki/Setup-Guide) for full configuration instructions.
+On Linux or macOS:
+
+```sh
+git clone https://github.com/Coding-Autopilot-System/Promptimprover.git
+cd Promptimprover
+./build_and_install.sh
+```
+
+Both installers perform a deterministic dependency install, run the full test suite, build the package, install it globally, and verify the `gemini-prompt-refiner` command. Add that command to your MCP client configuration. See the [Setup Guide](https://github.com/Coding-Autopilot-System/Promptimprover/wiki/Setup-Guide) for full configuration instructions.
 
 ## License
 
