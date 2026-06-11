@@ -1,40 +1,55 @@
 {
-    "name": "gemini-prompt-refiner",
-    "version": "8.0.0",
-    "description": "Cross-CLI prompt refinement using an MCP server.",
-    "main": "dist/src/index.js",
-    "bin": {
-        "gemini-prompt-refiner": "./dist/src/index.js"
-    },
-    "scripts": {
-        "prebuild": "node scripts/sync-version.mjs",
-        "build": "tsc && (if not exist dist\\src\\core mkdir dist\\src\\core) && copy src\\core\\dashboard.html dist\\src\\core\\dashboard.html /Y",
-        "start": "node dist/src/index.js",
-        "dev": "ts-node src/index.ts",
-        "pretest": "node scripts/sync-version.mjs",
-        "test": "vitest run"
-    },
-    "keywords": [
-        "mcp",
-        "mcp-server",
-        "gemini",
-        "prompt-refinement"
-    ],
-    "author": "",
-    "license": "ISC",
-    "type": "module",
-    "dependencies": {
-        "@modelcontextprotocol/sdk": "^1.29.0",
-        "better-sqlite3": "^12.8.0",
-        "chokidar": "^5.0.0",
-        "flexsearch": "^0.7.43",
-        "zod": "^4.3.6"
-    },
-    "devDependencies": {
-        "@types/better-sqlite3": "^7.6.13",
-        "@types/node": "^22.19.17",
-        "ts-node": "^10.9.2",
-        "typescript": "^5.9.3",
-        "vitest": "^4.1.4"
-    }
+    "name":  "gemini-prompt-refiner",
+    "version":  "8.0.0",
+    "description":  "Cross-CLI prompt refinement using an MCP server.",
+    "main":  "dist/src/index.js",
+    "bin":  {
+                "gemini-prompt-refiner":  "./dist/src/index.js"
+            },
+    "scripts":  {
+                    "prebuild":  "node scripts/sync-version.mjs",
+                    "build":  "tsc \u0026\u0026 node scripts/copy-dashboard.mjs",
+                    "start":  "node dist/src/index.js",
+                    "dev":  "ts-node src/index.ts",
+                    "pretest":  "node scripts/sync-version.mjs",
+                    "test":  "vitest run"
+                },
+    "keywords":  [
+                     "mcp",
+                     "mcp-server",
+                     "gemini",
+                     "prompt-refinement"
+                 ],
+    "author":  "Kim Harjamaki",
+    "license":  "MIT",
+    "type":  "module",
+    "dependencies":  {
+                         "@modelcontextprotocol/sdk":  "^1.29.0",
+                         "better-sqlite3":  "^12.8.0",
+                         "chokidar":  "^5.0.0",
+                         "flexsearch":  "^0.7.43",
+                         "zod":  "^4.3.6"
+                     },
+    "devDependencies":  {
+                            "@types/better-sqlite3":  "^7.6.13",
+                            "@types/node":  "^22.19.17",
+                            "ts-node":  "^10.9.2",
+                            "typescript":  "^5.9.3",
+                            "vitest":  "^4.1.4"
+                        },
+    "repository":  {
+                       "type":  "git",
+                       "url":  "git+https://github.com/Coding-Autopilot-System/Promptimprover.git",
+                       "directory":  "universal-refiner"
+                   },
+    "homepage":  "https://github.com/Coding-Autopilot-System/Promptimprover#readme",
+    "bugs":  {
+                 "url":  "https://github.com/Coding-Autopilot-System/Promptimprover/issues"
+             },
+    "engines":  {
+                    "node":  "\u003e=22"
+                },
+    "files":  [
+                  "dist/"
+              ]
 }

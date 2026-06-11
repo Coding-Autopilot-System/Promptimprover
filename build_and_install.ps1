@@ -1,12 +1,21 @@
-Write-Host "Starting Universal Build & Install..." -ForegroundColor Cyan
+[CmdletBinding()]
+param()
 
-cd universal-refiner
-npm install
-npm run build
-npm install -g .
+$ErrorActionPreference = 'Stop'
+$packageDir = Join-Path $PSScriptRoot 'universal-refiner'
 
-$package = Get-Content .\package.json | ConvertFrom-Json
-$version = $package.version
+Write-Host 'Validating and installing Universal Refiner...' -ForegroundColor Cyan
+Push-Location $packageDir
+try {
+    npm ci --no-fund
+    npm test
+    npm run build
+    npm install --global . --no-fund
 
-Write-Host "Prompt Refiner v$version installed globally as 'prompt-refiner'" -ForegroundColor Green
-Write-Host "Use 'prompt-refiner' command in your MCP configurations." -ForegroundColor Yellow
+    $package = Get-Content .\package.json -Raw | ConvertFrom-Json
+    $command = Get-Command gemini-prompt-refiner -ErrorAction Stop
+    Write-Host "Prompt Refiner v$($package.version) installed: $($command.Source)" -ForegroundColor Green
+}
+finally {
+    Pop-Location
+}
