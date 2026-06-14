@@ -4,15 +4,21 @@
     "description":  "Cross-CLI prompt refinement using an MCP server.",
     "main":  "dist/src/index.js",
     "bin":  {
-                "gemini-prompt-refiner":  "./dist/src/index.js"
+                "gemini-prompt-refiner":  "./dist/src/index.js",
+                "promptimprover-hook-pre": "./dist/hooks/pre-prompt.js",
+                "promptimprover-hook-post": "./dist/hooks/post-execution.js"
             },
     "scripts":  {
-                    "prebuild":  "node scripts/sync-version.mjs",
+                    "prebuild":  "node scripts/sync-version.mjs && node scripts/clean-dist.mjs",
                     "build":  "tsc \u0026\u0026 node scripts/copy-dashboard.mjs",
                     "start":  "node dist/src/index.js",
                     "dev":  "ts-node src/index.ts",
                     "pretest":  "node scripts/sync-version.mjs",
-                    "test":  "vitest run"
+                    "test":  "vitest run",
+                    "test:acceptance":  "vitest run tests/acceptance",
+                    "test:stress":  "vitest run tests/stress",
+                    "acceptance:semantic":  "node scripts/acceptance/semantic-provider-acceptance.mjs",
+                    "stress:event-store":  "node scripts/stress/event-store-stress.mjs"
                 },
     "keywords":  [
                      "mcp",
@@ -50,6 +56,7 @@
                     "node":  "\u003e=22"
                 },
     "files":  [
-                  "dist/"
+                  "dist/",
+                  "hooks/config/"
               ]
 }

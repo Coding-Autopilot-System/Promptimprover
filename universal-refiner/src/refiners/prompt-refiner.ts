@@ -1,7 +1,12 @@
 import { ProjectContext } from "../detectors/project-scout.js";
+import type { SelectedApprovedTemplate } from "./template-selector.js";
+
+export interface RefinementContext {
+  approvedTemplates?: readonly SelectedApprovedTemplate[];
+}
 
 export class PromptRefiner {
-  static calculateGain(original: string, refined: string, ctx: ProjectContext): number {
+  static calculateGain(original: string, refined: string, ctx: ProjectContext, refinementContext: RefinementContext = {}): number {
     // Score evidence-backed context enrichment, not output verbosity.
     let gain = 10;
 
@@ -10,12 +15,19 @@ export class PromptRefiner {
     if (ctx.learnedPatterns && ctx.learnedPatterns.length > 0) gain += 15;
     if (ctx.customMandates && ctx.customMandates.length > 0) gain += 20;
     if (ctx.predictiveLessons && ctx.predictiveLessons.length > 0) gain += 15;
+    if (refinementContext.approvedTemplates && refinementContext.approvedTemplates.length > 0) gain += 15;
     if (ctx.framework !== "Unknown") gain += 10;
 
     return Math.min(Math.round(gain), 100);
   }
 
-  static refine(originalPrompt: string, ctx: ProjectContext, answers: Record<string, any>, promptId?: string): string {
+  static refine(
+    originalPrompt: string,
+    ctx: ProjectContext,
+    answers: Record<string, any>,
+    promptId?: string,
+    refinementContext: RefinementContext = {}
+  ): string {
     let refined = `**REFINED PROMPT (COMMAND CENTER v10.0)**\n`;
     if (promptId) {
       refined += `[PROMPT_ID: ${promptId}]\n`;
@@ -57,6 +69,17 @@ export class PromptRefiner {
       for (const snippet of ctx.relevantSnippets) {
         const label = snippet.symbolName ? `[${snippet.symbolType}] ${snippet.symbolName}` : `[chunk]`;
         refined += `**${label}** (File: ${snippet.filePath})\n\`\`\`\n${snippet.content.trim()}\n\`\`\`\n\n`;
+      }
+    }
+
+    if (refinementContext.approvedTemplates && refinementContext.approvedTemplates.length > 0) {
+      refined += `\n### Approved Prompt Templates\n`;
+      refined += `Use these reviewed templates as context. Adapt them to the task; do not replace the user's intent.\n\n`;
+      for (const template of refinementContext.approvedTemplates) {
+        refined += `**${template.title}** (${template.category}; relevance ${template.relevanceScore})\n`;
+        refined += `${template.templateText.trim()}\n`;
+        if (template.usageNotes) refined += `Usage notes: ${template.usageNotes.trim()}\n`;
+        refined += `\n`;
       }
     }
 

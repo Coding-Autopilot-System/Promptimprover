@@ -34,6 +34,9 @@ import {
   SemanticResponse,
 } from "./semantic-provider.js";
 import { parseStructuredResponse } from "./structured-response.js";
+import { RepositoryIdentity } from "../history/repository-identity.js";
+import { ApprovedTemplateSelector } from "../refiners/template-selector.js";
+import { createABEvaluationRecord, evaluatePrompt } from "../evaluation/prompt-evaluator.js";
 
 export class PromptRefinerServer {
   private server: Server;
@@ -42,10 +45,14 @@ export class PromptRefinerServer {
   private eventStore: EventStore;
   private backgroundAutonomy: BackgroundAutonomyService | null = null;
   private semanticProviders: SemanticProviderChain;
+  private repository: RepositoryIdentity;
+  private templateSelector: ApprovedTemplateSelector;
 
   constructor(rootPath: string = ".") {
     this.rootPath = rootPath;
     this.eventStore = EventStore.getInstance();
+    this.repository = this.eventStore.ensureRepository(rootPath);
+    this.templateSelector = new ApprovedTemplateSelector(this.eventStore);
     this.server = new Server(
       { name: "prompt-refiner", version: getPackageVersion() },
       { capabilities: { tools: {}, logging: {}, experimental: { sampling: {} } } }
@@ -88,7 +95,7 @@ export class PromptRefinerServer {
     this.eventStore.recordEvent({
       id: `evt_semantic_${Date.now()}_${Math.floor(Math.random() * 100000)}`,
       event_type: "semantic_request_completed",
-      repo_id: path.basename(this.rootPath),
+      repo_id: this.repository.id,
       summary: `${request.taskName} completed with ${response.provider}/${response.model}`,
       details_json: JSON.stringify(details),
     });
@@ -104,7 +111,7 @@ export class PromptRefinerServer {
     const predictive = ConfigManager.getPredictiveMandates();
     const snippets = query ? await NeuralSnippets.search(query, this.rootPath) : [];
     const activeIntents = AgenticBlackboard.getActiveIntents(this.rootPath);
-    const repoId = path.basename(this.rootPath);
+    const repoId = this.repository.id;
     const predictiveLessons = this.eventStore.getRecentLessons(repoId, 5);
 
     return {
@@ -234,7 +241,10 @@ Output ONLY the JSON array. If no gaps, return [].`,
           description: "Performs modular analysis of a prompt and codebase.",
           inputSchema: {
             type: "object",
-            properties: { prompt: { type: "string" } },
+            properties: {
+              prompt: { type: "string" },
+              semantic: { type: "boolean", description: "Set false for latency-sensitive automation that needs rule-based linting only." }
+            },
             required: ["prompt"],
           },
         },
@@ -385,6 +395,51 @@ Output ONLY the JSON array. If no gaps, return [].`,
             required: ["prompt_id", "output_summary"]
           }
         },
+        {
+          name: "evaluate_prompt",
+          description: "Scores a prompt with deterministic evidence indicators across five quality dimensions.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              prompt: { type: "string" },
+              baseline_prompt: { type: "string", description: "Optional original prompt used to measure intent preservation." }
+            },
+            required: ["prompt"]
+          }
+        },
+        {
+          name: "compare_prompt_variants",
+          description: "Compares prompt variants and separates heuristic preference from optional observed execution evidence.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              baseline_prompt: { type: "string" },
+              variant_a: { type: "string" },
+              variant_b: { type: "string" },
+              outcome_a: {
+                type: "object",
+                properties: {
+                  status: { type: "string", enum: ["completed", "failed", "cancelled"] },
+                  testsPassed: { type: "number" },
+                  testsFailed: { type: "number" },
+                  reworkCount: { type: "number" }
+                },
+                required: ["status"]
+              },
+              outcome_b: {
+                type: "object",
+                properties: {
+                  status: { type: "string", enum: ["completed", "failed", "cancelled"] },
+                  testsPassed: { type: "number" },
+                  testsFailed: { type: "number" },
+                  reworkCount: { type: "number" }
+                },
+                required: ["status"]
+              }
+            },
+            required: ["baseline_prompt", "variant_a", "variant_b"]
+          }
+        },
       ],
     }));
 
@@ -395,7 +450,10 @@ Output ONLY the JSON array. If no gaps, return [].`,
 
         switch (request.params.name) {
           case "lint_prompt": {
-            const { prompt } = z.object({ prompt: z.string() }).parse(request.params.arguments);
+            const { prompt, semantic } = z.object({
+              prompt: z.string(),
+              semantic: z.boolean().optional(),
+            }).parse(request.params.arguments);
             AgenticBlackboard.postIntent(agentName, "lint", prompt, this.rootPath);
             CommandCenterDashboard.log(`Scouting project for prompt: "${prompt.substring(0, 30)}..."`);
 
@@ -405,16 +463,16 @@ Output ONLY the JSON array. If no gaps, return [].`,
               client: "MCP",
               agent_name: agentName,
               raw_prompt: prompt,
-              repo_id: path.basename(this.rootPath)
+              repo_id: this.repository.id
             });
 
             const ctx = await this.scoutProject(prompt);
             const ruleGaps = PromptLinter.lint(prompt, ctx);
-            const semanticGaps = await this.lintSemantic(prompt, ctx);
+            const semanticGaps = semantic === false ? [] : await this.lintSemantic(prompt, ctx);
             const gaps = PromptLinter.mergeGaps(ruleGaps, semanticGaps);
 
             CommandCenterDashboard.log(`Found ${gaps.length} total gaps (Rule: ${ruleGaps.length}, Semantic: ${semanticGaps.length}).`);
-            return { content: [{ type: "text", text: JSON.stringify({ gaps, context: ctx }) }] };
+            return { content: [{ type: "text", text: JSON.stringify({ promptId, gaps, context: ctx }) }] };
           }
           case "create_questions": {
             const { gaps } = z.object({ gaps: z.array(z.any()) }).parse(request.params.arguments);
@@ -434,8 +492,13 @@ Output ONLY the JSON array. If no gaps, return [].`,
 
             const ctx = await this.scoutProject(original_prompt);
             const promptId = `ref_${Date.now()}`;
-            const refined = PromptRefiner.refine(original_prompt, ctx, answers, promptId);
-            const gain = PromptRefiner.calculateGain(original_prompt, refined, ctx);
+            const approvedTemplates = await this.templateSelector.select({
+              repoId: this.repository.id,
+              prompt: original_prompt,
+            });
+            const refinementContext = { approvedTemplates };
+            const refined = PromptRefiner.refine(original_prompt, ctx, answers, promptId, refinementContext);
+            const gain = PromptRefiner.calculateGain(original_prompt, refined, ctx, refinementContext);
 
             this.eventStore.recordPrompt({
               id: promptId,
@@ -444,11 +507,11 @@ Output ONLY the JSON array. If no gaps, return [].`,
               raw_prompt: original_prompt,
               normalized_prompt: refined,
               intent: "refine",
-              repo_id: path.basename(this.rootPath)
+              repo_id: this.repository.id
             });
 
             CommandCenterDashboard.setLastRefinement(original_prompt, refined, this.rootPath, gain);
-            CommandCenterDashboard.log(`Refinement Complete. Quality Gain: ${gain}%. Injected ${ctx.learnedPatterns?.length || 0} Mandates.`);
+            CommandCenterDashboard.log(`Refinement Complete. Quality Gain: ${gain}%. Injected ${ctx.learnedPatterns?.length || 0} mandates and ${approvedTemplates.length} approved templates.`);
 
             return { content: [{ type: "text", text: refined }] };
           }
@@ -484,12 +547,12 @@ Output ONLY the JSON array. If no gaps, return [].`,
             return { content: [{ type: "text", text: "Rule '" + id + "' promoted!" }] };
           }
           case "list_learning_candidates": {
-            const candidates = this.eventStore.getLearningCandidates(path.basename(this.rootPath));
+            const candidates = this.eventStore.getLearningCandidates(this.repository.id);
             return { content: [{ type: "text", text: JSON.stringify(candidates) }] };
           }
           case "review_lesson": {
             const { id, approved } = z.object({ id: z.string(), approved: z.boolean() }).parse(request.params.arguments);
-            const changed = this.eventStore.reviewLesson(path.basename(this.rootPath), id, approved);
+            const changed = this.eventStore.reviewLesson(this.repository.id, id, approved);
             if (!changed) {
               throw new McpError(ErrorCode.InvalidParams, `Pending lesson not found: ${id}`);
             }
@@ -498,7 +561,7 @@ Output ONLY the JSON array. If no gaps, return [].`,
           }
           case "review_template": {
             const { id, approved } = z.object({ id: z.string(), approved: z.boolean() }).parse(request.params.arguments);
-            const changed = this.eventStore.reviewTemplate(path.basename(this.rootPath), id, approved);
+            const changed = this.eventStore.reviewTemplate(this.repository.id, id, approved);
             if (!changed) {
               throw new McpError(ErrorCode.InvalidParams, `Pending template not found: ${id}`);
             }
@@ -580,7 +643,7 @@ Output ONLY the JSON array. If no gaps, return [].`,
           }
           case "generate_templates": {
             CommandCenterDashboard.log(`Executing Autonomous Template Synthesis...`);
-            const repoId = path.basename(this.rootPath);
+            const repoId = this.repository.id;
             const generator = new TemplateGenerator(this.requestModelText.bind(this));
             await generator.generateNewTemplates(repoId);
             CommandCenterDashboard.log(`Template Synthesis complete.`);
@@ -623,6 +686,36 @@ Output ONLY the JSON array. If no gaps, return [].`,
             }
 
             return { content: [{ type: "text", text: `Successfully recorded output for prompt ${prompt_id}.` }] };
+          }
+          case "evaluate_prompt": {
+            const { prompt, baseline_prompt } = z.object({
+              prompt: z.string(),
+              baseline_prompt: z.string().optional(),
+            }).parse(request.params.arguments);
+            const evaluation = baseline_prompt ? evaluatePrompt(prompt, baseline_prompt) : evaluatePrompt(prompt);
+            return { content: [{ type: "text", text: JSON.stringify(evaluation) }] };
+          }
+          case "compare_prompt_variants": {
+            const outcomeSchema = z.object({
+              status: z.enum(["completed", "failed", "cancelled"]),
+              testsPassed: z.number().nonnegative().optional(),
+              testsFailed: z.number().nonnegative().optional(),
+              reworkCount: z.number().nonnegative().optional(),
+            });
+            const { baseline_prompt, variant_a, variant_b, outcome_a, outcome_b } = z.object({
+              baseline_prompt: z.string(),
+              variant_a: z.string(),
+              variant_b: z.string(),
+              outcome_a: outcomeSchema.optional(),
+              outcome_b: outcomeSchema.optional(),
+            }).parse(request.params.arguments);
+            const experiment = createABEvaluationRecord({
+              experimentId: `exp_${Date.now()}`,
+              baselinePrompt: baseline_prompt,
+              variantA: { id: "A", prompt: variant_a, observedOutcome: outcome_a },
+              variantB: { id: "B", prompt: variant_b, observedOutcome: outcome_b },
+            });
+            return { content: [{ type: "text", text: JSON.stringify(experiment) }] };
           }
           default:
             throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${request.params.name}`);

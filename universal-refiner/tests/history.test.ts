@@ -147,4 +147,36 @@ describe("EventStore", () => {
     expect(db.prepare("SELECT COUNT(*) AS count FROM commits WHERE id = ?").get(commit.id).count).toBe(1);
     expect(db.prepare("SELECT COUNT(*) AS count FROM events WHERE commit_id = ?").get(commit.id).count).toBe(1);
   });
+
+  it("should migrate legacy basename repository records to canonical identity", () => {
+    const store = EventStore.getInstance();
+    store.recordPrompt({ id: "legacy-prompt", repo_id: "service", client: "test", raw_prompt: "legacy" });
+
+    const identity = store.ensureRepository("C:/repo/team/service");
+    const db = (store as any).db;
+    expect(identity.id).not.toBe("service");
+    expect(db.prepare("SELECT repo_id FROM prompts WHERE id = ?").get("legacy-prompt").repo_id).toBe(identity.id);
+  });
+
+  it("returns only approved active templates for a repository", () => {
+    const store = EventStore.getInstance();
+    const identity = store.ensureRepository("C:/repo/team/service");
+    for (const id of ["approved", "pending"]) {
+      store.recordTemplate({
+        id,
+        repo_id: identity.id,
+        category: "bugfix",
+        title: id,
+        template_text: `${id} template`,
+        usage_notes: "",
+        source_type: "test",
+        success_score: id === "approved" ? 90 : 95,
+      });
+    }
+    expect(store.reviewTemplate(identity.id, "approved", true)).toBe(true);
+
+    expect(store.getTemplates(identity.id)).toMatchObject([
+      { id: "approved", repoId: identity.id, approved: 1, deprecated: 0 },
+    ]);
+  });
 });

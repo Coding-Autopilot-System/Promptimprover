@@ -1,5 +1,4 @@
 import { execSync } from "child_process";
-import * as path from "path";
 import { EventStore } from "./event-store.js";
 import { RuntimeLogger } from "../core/logger.js";
 
@@ -36,7 +35,7 @@ export class CommitIngester {
   async ingest(repoPath: string, limit = 10): Promise<number> {
     try {
       RuntimeLogger.info(`Starting commit ingestion for ${repoPath}...`);
-      const repoId = path.basename(repoPath);
+      const repoId = this.eventStore.ensureRepository(repoPath).id;
       const lastSha = this.eventStore.getLastCommitSha(repoId);
       
       const commits = this.getLatestCommits(repoPath, limit, lastSha);

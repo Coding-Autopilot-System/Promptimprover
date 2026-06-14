@@ -62,6 +62,14 @@
     .lesson-card { border-left: 4px solid var(--accent); background: rgba(56, 189, 248, 0.03); padding: 1rem; border-radius: 0 0.5rem 0.5rem 0; margin-bottom: 1rem; }
     .confidence-high { color: #22c55e; }
     .confidence-medium { color: #eab308; }
+    .actions { display: flex; gap: 0.5rem; margin-top: 1rem; }
+    button { border: 1px solid var(--border); border-radius: 0.4rem; padding: 0.45rem 0.8rem; color: var(--text); background: #1e293b; cursor: pointer; }
+    button:hover { border-color: var(--accent); }
+    button.approve { background: rgba(34, 197, 94, 0.15); color: #86efac; }
+    button.reject { background: rgba(239, 68, 68, 0.15); color: #fca5a5; }
+    .health-good { color: #22c55e; }
+    .health-warn { color: #eab308; }
+    .notice { min-height: 1.25rem; color: var(--dim); font-size: 0.75rem; margin-bottom: 1rem; }
   </style>
 </head>
 <body>
@@ -75,6 +83,7 @@
       <div class="nav-item" onclick="switchView('intelligence')">🧠 COMMIT INTELLIGENCE</div>
       <div class="nav-item" onclick="switchView('learning')">📖 LEARNING LAYER</div>
       <div class="nav-item" onclick="switchView('library')">📚 PROMPT LIBRARY</div>
+      <div class="nav-item" onclick="switchView('health')">PROVIDER HEALTH</div>
       
       <div style="margin-top: 2rem; font-size: 0.6rem; color: var(--dim); text-transform: uppercase; letter-spacing: 0.1em; padding-left: 0.75rem;">Selected Project</div>
       <div id="project-list" style="margin-top: 0.5rem;"></div>
@@ -125,6 +134,7 @@
       <div class="grid">
         <div class="card col-12">
           <h2>Predictive Engineering Lessons</h2>
+          <div id="review-notice-learning" class="notice"></div>
           <div id="lesson-list"></div>
         </div>
       </div>
@@ -135,7 +145,26 @@
       <div class="grid">
         <div class="card col-12">
           <h2>Autonomous Prompt Templates</h2>
+          <div id="review-notice-library" class="notice"></div>
           <div id="template-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- VIEW: PROVIDER HEALTH -->
+    <div id="view-health" class="main-view hidden">
+      <div class="grid">
+        <div class="card col-4">
+          <h2>Runtime</h2>
+          <div id="runtime-health"></div>
+        </div>
+        <div class="card col-8">
+          <h2>Semantic Provider Configuration</h2>
+          <div id="semantic-health"></div>
+        </div>
+        <div class="card col-12">
+          <h2>Provider Metrics</h2>
+          <div id="provider-metrics"></div>
         </div>
       </div>
     </div>
@@ -148,6 +177,7 @@
     let currentView = 'stream';
 
     const escapeHtml = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const encodeCandidateId = (v) => encodeURIComponent(String(v)).replace(/'/g, '%27');
     const projectName = (p) => p.split(/[\\\/]/).filter(Boolean).pop() || 'ROOT';
 
     function switchView(viewId) {
@@ -156,7 +186,7 @@
       document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
       event.target.classList.add('active');
       
-      const titles = { 'stream': 'Global Intelligence Stream', 'intelligence': 'Commit Intelligence', 'learning': 'Learning Layer', 'library': 'Prompt Library' };
+      const titles = { 'stream': 'Global Intelligence Stream', 'intelligence': 'Commit Intelligence', 'learning': 'Learning Layer', 'library': 'Prompt Library', 'health': 'Provider Health' };
       document.getElementById('view-title').textContent = titles[viewId];
       currentView = viewId;
       refreshData();
@@ -224,10 +254,11 @@
           <div class="lesson-card">
             <div style="display:flex; justify-content:space-between;">
               <strong style="font-size:1rem;">${escapeHtml(l.title)}</strong>
-              <span class="badge confidence-${l.confidence}">${l.confidence.toUpperCase()} CONFIDENCE</span>
+              <span class="badge ${l.confidence === 'high' ? 'confidence-high' : l.confidence === 'medium' ? 'confidence-medium' : ''}">${escapeHtml(l.confidence).toUpperCase()} CONFIDENCE</span>
             </div>
             <p style="margin: 10px 0; font-size: 0.9rem;">${escapeHtml(l.summary)}</p>
-            <div style="font-size: 0.7rem; color: var(--dim);">TYPE: ${l.lesson_type.toUpperCase()} • SOURCE: ${l.source} • REVIEW: ${l.approved === 1 ? 'APPROVED' : l.approved === -1 ? 'REJECTED' : 'PENDING'}</div>
+            <div style="font-size: 0.7rem; color: var(--dim);">TYPE: ${escapeHtml(l.lesson_type).toUpperCase()} • SOURCE: ${escapeHtml(l.source)} • REVIEW: ${l.approved === 1 ? 'APPROVED' : l.approved === -1 ? 'REJECTED' : 'PENDING'}</div>
+            ${l.approved === 0 ? `<div class="actions"><button class="approve" onclick="reviewCandidate('lesson','${encodeCandidateId(l.id)}','approve')">Approve</button><button class="reject" onclick="reviewCandidate('lesson','${encodeCandidateId(l.id)}','reject')">Reject</button></div>` : ''}
           </div>
         `).join('') || '<p style="color:var(--dim)">No lessons extracted yet. Run derive_lessons!</p>';
       }
@@ -241,8 +272,59 @@
             <p style="color:var(--dim); font-size:0.8rem;">${escapeHtml(t.usage_notes)}</p>
             <pre>${escapeHtml(t.template_text)}</pre>
             <div style="margin-top:10px; font-size:0.7rem;">SUCCESS SCORE: ${t.success_score}% • REVIEW: ${t.approved === 1 ? 'APPROVED' : t.deprecated === 1 ? 'REJECTED' : 'PENDING'}</div>
+            ${t.approved === 0 && t.deprecated === 0 ? `<div class="actions"><button class="approve" onclick="reviewCandidate('template','${encodeCandidateId(t.id)}','approve')">Approve</button><button class="reject" onclick="reviewCandidate('template','${encodeCandidateId(t.id)}','reject')">Reject</button></div>` : ''}
           </div>
         `).join('') || '<p style="color:var(--dim)">Prompt library is currently empty.</p>';
+      }
+
+      if (currentView === 'health') {
+        const res = await fetch(`/api/health?project=${encodeURIComponent(currentProject)}`);
+        const health = await res.json();
+        if (!res.ok) throw new Error(health.error || 'Provider health unavailable');
+        const semantic = health.semantic;
+        document.getElementById('runtime-health').innerHTML = `
+          <div class="stat-row"><span class="stat-label">STATUS</span><span class="health-good">${escapeHtml(health.runtime.status).toUpperCase()}</span></div>
+          <div class="stat-row"><span class="stat-label">UPTIME</span><span>${health.runtime.uptimeSeconds}s</span></div>
+          <div class="stat-row"><span class="stat-label">NODE</span><span>${escapeHtml(health.runtime.nodeVersion)}</span></div>
+          <div class="stat-row"><span class="stat-label">CHECKED</span><span>${new Date(health.runtime.checkedAt).toLocaleString()}</span></div>
+        `;
+        document.getElementById('semantic-health').innerHTML = `
+          <div class="stat-row"><span class="stat-label">STATUS</span><span class="${semantic.status === 'healthy' ? 'health-good' : 'health-warn'}">${escapeHtml(semantic.status).toUpperCase()}</span></div>
+          <div class="stat-row"><span class="stat-label">LOCAL PROVIDER</span><span>${semantic.local.enabled ? 'ENABLED' : 'DISABLED'}</span></div>
+          <div class="stat-row"><span class="stat-label">ENDPOINT</span><span>${escapeHtml(semantic.local.endpoint)}</span></div>
+          <div class="stat-row"><span class="stat-label">MODELS</span><span>${semantic.local.models.map(escapeHtml).join(', ')}</span></div>
+          <div class="stat-row"><span class="stat-label">MCP SAMPLING</span><span>${semantic.mcpSampling.enabled ? 'ENABLED' : 'DISABLED'}</span></div>
+          <div class="stat-row"><span class="stat-label">COMPLETIONS</span><span>${semantic.totals.completed}</span></div>
+          <div class="stat-row"><span class="stat-label">AVG LATENCY</span><span>${semantic.totals.averageLatencyMs === null ? 'N/A' : semantic.totals.averageLatencyMs + 'ms'}</span></div>
+          <div class="stat-row"><span class="stat-label">FALLBACK COMPLETIONS</span><span>${semantic.totals.fallbackCompletions}</span></div>
+        `;
+        document.getElementById('provider-metrics').innerHTML = semantic.providers.map(p => `
+          <div class="card" style="background: rgba(255,255,255,0.02); margin-bottom: 0.75rem;">
+            <strong>${escapeHtml(p.provider)}</strong>
+            <div class="stat-row"><span class="stat-label">COMPLETIONS</span><span>${p.completions}</span></div>
+            <div class="stat-row"><span class="stat-label">AVG LATENCY</span><span>${p.averageLatencyMs === null ? 'N/A' : p.averageLatencyMs + 'ms'}</span></div>
+            <div class="stat-row"><span class="stat-label">MODELS</span><span>${p.models.map(escapeHtml).join(', ')}</span></div>
+            <div class="stat-row"><span class="stat-label">LAST SUCCESS</span><span>${new Date(p.lastSuccessAt).toLocaleString()}</span></div>
+          </div>
+        `).join('') || '<p style="color:var(--dim)">No semantic completion telemetry recorded for this project.</p>';
+      }
+    }
+
+    async function reviewCandidate(kind, encodedId, decision) {
+      const notice = document.getElementById(currentView === 'learning' ? 'review-notice-learning' : 'review-notice-library');
+      notice.textContent = `${decision === 'approve' ? 'Approving' : 'Rejecting'} ${kind}...`;
+      try {
+        const response = await fetch(`/api/review/${kind}/${encodedId}?project=${encodeURIComponent(currentProject)}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ decision })
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Review failed');
+        notice.textContent = `${kind === 'lesson' ? 'Lesson' : 'Template'} ${decision === 'approve' ? 'approved' : 'rejected'}.`;
+        await refreshData();
+      } catch (error) {
+        notice.textContent = error instanceof Error ? error.message : String(error);
       }
     }
 

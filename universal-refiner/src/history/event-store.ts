@@ -4,26 +4,34 @@ import * as os from "os";
 import * as fs from "fs";
 import { SCHEMA_V1 } from "./schema.js";
 import { RuntimeLogger } from "../core/logger.js";
+import { RepositoryIdentity, resolveRepositoryIdentity } from "./repository-identity.js";
+import type { PromptTemplateCandidate } from "../refiners/template-selector.js";
 
 export class EventStore {
   private db: Database.Database;
+  private dbPath: string;
   private static instance: EventStore | null = null;
 
-  private constructor() {
-    const dbPath = this.getDatabasePath();
-    this.ensureDirectory(path.dirname(dbPath));
-    this.db = new Database(dbPath);
+  private constructor(dbPath: string) {
+    this.dbPath = dbPath;
+    this.ensureDirectory(path.dirname(this.dbPath));
+    this.db = new Database(this.dbPath);
     this.initializeSchema();
   }
 
   static getInstance(): EventStore {
-    if (!this.instance) {
-      this.instance = new EventStore();
+    const dbPath = this.resolveDatabasePath();
+    if (!this.instance || this.instance.dbPath !== dbPath) {
+      try {
+        this.instance?.close();
+      } catch {
+      }
+      this.instance = new EventStore(dbPath);
     }
     return this.instance;
   }
 
-  private getDatabasePath(): string {
+  private static resolveDatabasePath(): string {
     const globalDir = process.env.PROMPT_REFINER_GLOBAL_DIR || path.join(os.homedir(), ".refiner");
     return path.join(globalDir, "events.db");
   }
@@ -36,6 +44,13 @@ export class EventStore {
 
   private initializeSchema() {
     try {
+      try {
+        this.db.pragma("journal_mode = WAL");
+      } catch (error) {
+        RuntimeLogger.warn("EventStore could not enable WAL mode; continuing with the current journal mode", error);
+      }
+      this.db.pragma("busy_timeout = 5000");
+      this.db.pragma("foreign_keys = ON");
       this.db.exec(SCHEMA_V1);
       RuntimeLogger.info("EventStore schema initialized successfully.");
     } catch (error) {
@@ -364,6 +379,53 @@ export class EventStore {
     );
   }
 
+  ensureRepository(repoPath: string): RepositoryIdentity {
+    const identity = resolveRepositoryIdentity(repoPath);
+    const now = new Date().toISOString();
+    const existing = this.db.prepare("SELECT id FROM repos WHERE path = ?").get(identity.path) as { id: string } | undefined;
+    if (existing) {
+      return { ...identity, id: existing.id };
+    }
+
+    const transaction = this.db.transaction(() => {
+      this.db.prepare(`
+        INSERT OR IGNORE INTO repos (id, path, name, trusted, created_at, updated_at)
+        VALUES (?, ?, ?, 1, ?, ?)
+      `).run(identity.id, identity.path, identity.name, now, now);
+
+      const tables = ["sessions", "prompts", "commits", "events", "lessons", "prompt_clusters", "prompt_templates"];
+      for (const table of tables) {
+        this.db.prepare(`UPDATE ${table} SET repo_id = ? WHERE repo_id = ?`).run(identity.id, identity.legacyId);
+      }
+    });
+    transaction();
+    RuntimeLogger.info("Registered canonical repository identity", {
+      repoId: identity.id,
+      path: identity.path,
+      legacyId: identity.legacyId,
+    });
+    return identity;
+  }
+
+  getTemplates(repoId: string): PromptTemplateCandidate[] {
+    return this.db.prepare(`
+      SELECT
+        id,
+        repo_id AS repoId,
+        category,
+        title,
+        template_text AS templateText,
+        usage_notes AS usageNotes,
+        success_score AS successScore,
+        approved,
+        deprecated
+      FROM prompt_templates
+      WHERE repo_id = ? AND approved = 1 AND deprecated = 0
+      ORDER BY success_score DESC, updated_at DESC
+      LIMIT 100
+    `).all(repoId) as PromptTemplateCandidate[];
+  }
+
   getRecentLessons(repoId: string, limit = 10): any[] {
     const stmt = this.db.prepare(`
       SELECT * FROM lessons 
@@ -406,5 +468,8 @@ export class EventStore {
 
   close() {
     this.db.close();
+    if (EventStore.instance === this) {
+      EventStore.instance = null;
+    }
   }
 }

@@ -1,5 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { PromptRefinerServer } from "../src/core/server.js";
+import { EventStore } from "../src/history/event-store.js";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 
 // Mock MCP SDK
 vi.mock("@modelcontextprotocol/sdk/server/index.js", () => {
@@ -20,10 +24,21 @@ vi.mock("@modelcontextprotocol/sdk/server/stdio.js", () => {
 
 describe("PromptRefinerServer", () => {
   let server: PromptRefinerServer;
+  let testDir: string;
 
   beforeEach(() => {
     vi.clearAllMocks();
+    testDir = fs.mkdtempSync(path.join(os.tmpdir(), "server-test-"));
+    process.env.PROMPT_REFINER_GLOBAL_DIR = testDir;
+    (EventStore as any).instance = null;
     server = new PromptRefinerServer(".");
+  });
+
+  afterEach(() => {
+    EventStore.getInstance().close();
+    (EventStore as any).instance = null;
+    delete process.env.PROMPT_REFINER_GLOBAL_DIR;
+    fs.rmSync(testDir, { recursive: true, force: true });
   });
 
   it("should initialize with correct tools", () => {

@@ -1,10 +1,9 @@
 {
   "hooks": {
-    "BeforeAgent": [
+    "UserPromptSubmit": [
       {
         "hooks": [
           {
-            "name": "promptimprover-pre-prompt",
             "type": "command",
             "command": "promptimprover-hook-pre",
             "timeout": 20
@@ -12,11 +11,10 @@
         ]
       }
     ],
-    "AfterAgent": [
+    "Stop": [
       {
         "hooks": [
           {
-            "name": "promptimprover-post-execution",
             "type": "command",
             "command": "promptimprover-hook-post",
             "timeout": 20

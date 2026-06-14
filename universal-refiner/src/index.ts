@@ -1,9 +1,6 @@
 #!/usr/bin/env node
 import { PromptRefinerServer } from "./core/server.js";
 import { CommandCenterDashboard } from "./core/dashboard.js";
-import { CommitIngester } from "./history/commit-ingest.js";
-import { CorrelationEngine } from "./history/correlation-engine.js";
-import { LessonExtractor } from "./history/lesson-extractor.js";
 import { FileWatcher } from "./watcher/index.js";
 import { RuntimeLogger } from "./core/logger.js";
 import * as path from "path";
@@ -24,16 +21,6 @@ fileWatcher.on("change", (evt) => {
 });
 fileWatcher.start();
 
-// Initial background ingestion and correlation
-async function runBackgroundTasks() {
-  await CommitIngester.ingestLatest(rootPath);
-  const correlation = new CorrelationEngine();
-  await correlation.correlateAll();
-
-  const extractor = new LessonExtractor((task, prompt, tokens) => server.requestModelText(task, prompt, tokens));
-  await extractor.extractNewLessons();
-}
-void runBackgroundTasks();
 server.run().catch((error) => {
   console.error("[FATAL ERROR]", error);
   process.exit(1);

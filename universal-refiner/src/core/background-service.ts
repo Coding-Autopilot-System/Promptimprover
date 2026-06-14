@@ -4,12 +4,14 @@ import { LessonExtractor } from "../history/lesson-extractor.js";
 import { CorrelationEngine } from "../history/correlation-engine.js";
 import { RuntimeLogger } from "./logger.js";
 import { CommandCenterDashboard } from "./dashboard.js";
+import { SerializedJobQueue } from "./job-queue.js";
 
 export class BackgroundAutonomyService {
   private watcher: chokidar.FSWatcher | null = null;
   private debounceTimer: NodeJS.Timeout | null = null;
   private rootPath: string;
   private requestModelText: (taskName: string, userPrompt: string, maxTokens: number) => Promise<string | null>;
+  private queue = new SerializedJobQueue();
 
   constructor(
     rootPath: string,
@@ -43,6 +45,8 @@ export class BackgroundAutonomyService {
       RuntimeLogger.debug(`File change detected: ${event} ${filePath}`);
       this.triggerAutonomy();
     });
+
+    this.queue.enqueue(`autonomy:${this.rootPath}`, () => this.runCycles());
   }
 
   private triggerAutonomy() {
@@ -50,8 +54,11 @@ export class BackgroundAutonomyService {
       clearTimeout(this.debounceTimer);
     }
 
-    this.debounceTimer = setTimeout(async () => {
-      await this.runCycles();
+    this.debounceTimer = setTimeout(() => {
+      const accepted = this.queue.enqueue(`autonomy:${this.rootPath}`, () => this.runCycles());
+      if (!accepted) {
+        RuntimeLogger.debug("Background autonomy cycle coalesced", { rootPath: this.rootPath });
+      }
     }, 3000);
   }
 
@@ -64,19 +71,16 @@ export class BackgroundAutonomyService {
       const ingestedCount = await CommitIngester.ingestLatest(this.rootPath, 100);
       CommandCenterDashboard.log(`Background Autonomy: Ingested ${ingestedCount} commits.`);
 
-      // b) CorrelationEngine.correlateAll()
       const engine = new CorrelationEngine();
-      await engine.correlateAll();
-      CommandCenterDashboard.log("Background Autonomy: Correlation complete.");
-
-      // c) LessonExtractor.extractNewLessons()
       const extractor = new LessonExtractor(this.requestModelText);
+      await engine.correlateAll();
       await extractor.extractNewLessons();
-      CommandCenterDashboard.log("Background Autonomy: Lesson extraction complete.");
+      CommandCenterDashboard.log("Background Autonomy: Correlation and lesson extraction complete.");
 
     } catch (error) {
       RuntimeLogger.error("Background Autonomy cycle failed", error);
       CommandCenterDashboard.log("Background Autonomy: Cycle failed. See logs.");
+      throw error;
     }
   }
 
@@ -89,5 +93,9 @@ export class BackgroundAutonomyService {
       clearTimeout(this.debounceTimer);
       this.debounceTimer = null;
     }
+  }
+
+  public async idle() {
+    await this.queue.idle();
   }
 }
