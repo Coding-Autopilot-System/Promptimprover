@@ -233,7 +233,7 @@ export class EventStore {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
-    stmt.run(
+    const result = stmt.run(
       commit.id,
       commit.repo_id,
       commit.sha,
@@ -244,6 +244,10 @@ export class EventStore {
       commit.changed_files_json || "[]",
       commit.diff_stats_json || "{}"
     );
+
+    if (result.changes === 0) {
+      return;
+    }
 
     this.recordEvent({
       id: `evt_${commit.sha}`,
@@ -364,11 +368,40 @@ export class EventStore {
     const stmt = this.db.prepare(`
       SELECT * FROM lessons 
       WHERE repo_id = ? 
-      AND (approved = 1 OR confidence = 'high')
+      AND approved = 1
       ORDER BY created_at DESC 
       LIMIT ?
     `);
     return stmt.all(repoId, limit);
+  }
+
+  getLearningCandidates(repoId: string): { lessons: any[]; templates: any[] } {
+    return {
+      lessons: this.db.prepare(`
+        SELECT id, lesson_type, title, summary, confidence, source, created_at
+        FROM lessons WHERE repo_id = ? AND approved = 0 ORDER BY created_at DESC
+      `).all(repoId),
+      templates: this.db.prepare(`
+        SELECT id, category, title, template_text, usage_notes, success_score, source_type, created_at
+        FROM prompt_templates WHERE repo_id = ? AND approved = 0 AND deprecated = 0 ORDER BY created_at DESC
+      `).all(repoId),
+    };
+  }
+
+  reviewLesson(repoId: string, id: string, approved: boolean): boolean {
+    const result = this.db.prepare(`
+      UPDATE lessons SET approved = ?, updated_at = ? WHERE repo_id = ? AND id = ? AND approved = 0
+    `).run(approved ? 1 : -1, new Date().toISOString(), repoId, id);
+    return result.changes > 0;
+  }
+
+  reviewTemplate(repoId: string, id: string, approved: boolean): boolean {
+    const result = approved
+      ? this.db.prepare(`UPDATE prompt_templates SET approved = 1, updated_at = ? WHERE repo_id = ? AND id = ? AND approved = 0 AND deprecated = 0`)
+          .run(new Date().toISOString(), repoId, id)
+      : this.db.prepare(`UPDATE prompt_templates SET deprecated = 1, updated_at = ? WHERE repo_id = ? AND id = ? AND approved = 0`)
+          .run(new Date().toISOString(), repoId, id);
+    return result.changes > 0;
   }
 
   close() {

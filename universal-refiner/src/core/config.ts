@@ -5,10 +5,30 @@ import { AgenticBlackboard } from "./blackboard.js";
 export interface RefinerConfig {
   mandates?: string[];
   ignoredPaths?: string[];
+  semantic?: Partial<SemanticConfig>;
+}
+
+export interface SemanticConfig {
+  localEnabled: boolean;
+  mcpSamplingEnabled: boolean;
+  baseUrl: string;
+  models: string[];
+  timeoutMs: number;
+  temperature: number;
+  allowNonLoopback: boolean;
 }
 
 export class ConfigManager {
   private static CONFIG_FILE = ".gemini-refiner.json";
+  private static DEFAULT_SEMANTIC_CONFIG: SemanticConfig = {
+    localEnabled: true,
+    mcpSamplingEnabled: true,
+    baseUrl: "http://localhost:9000/v1",
+    models: ["gemma3:12b", "gemma3:1b"],
+    timeoutMs: 120000,
+    temperature: 0.2,
+    allowNonLoopback: false,
+  };
 
   static loadConfig(rootPath: string = "."): RefinerConfig {
     const configPath = path.join(rootPath, this.CONFIG_FILE);
@@ -23,6 +43,26 @@ export class ConfigManager {
       console.error(`Error loading config from ${configPath}:`, e);
       return {};
     }
+  }
+
+  static getSemanticConfig(rootPath: string = "."): SemanticConfig {
+    const semantic = this.loadConfig(rootPath).semantic || {};
+    const defaults = this.DEFAULT_SEMANTIC_CONFIG;
+    return {
+      localEnabled: typeof semantic.localEnabled === "boolean" ? semantic.localEnabled : defaults.localEnabled,
+      mcpSamplingEnabled: typeof semantic.mcpSamplingEnabled === "boolean" ? semantic.mcpSamplingEnabled : defaults.mcpSamplingEnabled,
+      baseUrl: typeof semantic.baseUrl === "string" && semantic.baseUrl.trim() ? semantic.baseUrl.trim() : defaults.baseUrl,
+      models: Array.isArray(semantic.models) && semantic.models.length > 0 && semantic.models.every(model => typeof model === "string" && model.trim())
+        ? semantic.models.map(model => model.trim())
+        : defaults.models,
+      timeoutMs: typeof semantic.timeoutMs === "number" && Number.isFinite(semantic.timeoutMs) && semantic.timeoutMs > 0
+        ? semantic.timeoutMs
+        : defaults.timeoutMs,
+      temperature: typeof semantic.temperature === "number" && Number.isFinite(semantic.temperature) && semantic.temperature >= 0 && semantic.temperature <= 2
+        ? semantic.temperature
+        : defaults.temperature,
+      allowNonLoopback: typeof semantic.allowNonLoopback === "boolean" ? semantic.allowNonLoopback : defaults.allowNonLoopback,
+    };
   }
 
   static getPredictiveMandates(): string[] {

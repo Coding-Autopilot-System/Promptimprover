@@ -44,4 +44,10 @@ describe("PromptRefiner", () => {
     expect(refined).toContain("Agent A");
     expect(refined).toContain("Agent B");
   });
+
+  it("should not treat prompt verbosity as quality gain", () => {
+    const shortRefinement = PromptRefiner.calculateGain("task", "task with context", baseCtx);
+    const verboseRefinement = PromptRefiner.calculateGain("task", `task ${"detail ".repeat(1000)}`, baseCtx);
+    expect(verboseRefinement).toBe(shortRefinement);
+  });
 });

@@ -30,4 +30,34 @@ describe("ConfigManager", () => {
     const loaded = ConfigManager.loadConfig(tmpDir);
     expect(loaded).toEqual({});
   });
+
+  it("should use quality-first local semantic defaults", () => {
+    const config = ConfigManager.getSemanticConfig(tmpDir);
+    expect(config.baseUrl).toBe("http://localhost:9000/v1");
+    expect(config.models).toEqual(["gemma3:12b", "gemma3:1b"]);
+    expect(config.allowNonLoopback).toBe(false);
+  });
+
+  it("should merge semantic overrides with safe defaults", () => {
+    fs.writeFileSync(path.join(tmpDir, ".gemini-refiner.json"), JSON.stringify({
+      semantic: { models: ["gemma3:1b"], timeoutMs: 5000 }
+    }));
+
+    const config = ConfigManager.getSemanticConfig(tmpDir);
+    expect(config.models).toEqual(["gemma3:1b"]);
+    expect(config.timeoutMs).toBe(5000);
+    expect(config.allowNonLoopback).toBe(false);
+  });
+
+  it("should reject malformed semantic overrides", () => {
+    fs.writeFileSync(path.join(tmpDir, ".gemini-refiner.json"), JSON.stringify({
+      semantic: { models: [42], timeoutMs: -1, temperature: 99, baseUrl: "" }
+    }));
+
+    const config = ConfigManager.getSemanticConfig(tmpDir);
+    expect(config.models).toEqual(["gemma3:12b", "gemma3:1b"]);
+    expect(config.timeoutMs).toBe(120000);
+    expect(config.temperature).toBe(0.2);
+    expect(config.baseUrl).toBe("http://localhost:9000/v1");
+  });
 });

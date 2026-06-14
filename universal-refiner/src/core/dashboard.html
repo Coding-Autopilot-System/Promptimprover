@@ -227,7 +227,7 @@
               <span class="badge confidence-${l.confidence}">${l.confidence.toUpperCase()} CONFIDENCE</span>
             </div>
             <p style="margin: 10px 0; font-size: 0.9rem;">${escapeHtml(l.summary)}</p>
-            <div style="font-size: 0.7rem; color: var(--dim);">TYPE: ${l.lesson_type.toUpperCase()} • SOURCE: ${l.source}</div>
+            <div style="font-size: 0.7rem; color: var(--dim);">TYPE: ${l.lesson_type.toUpperCase()} • SOURCE: ${l.source} • REVIEW: ${l.approved === 1 ? 'APPROVED' : l.approved === -1 ? 'REJECTED' : 'PENDING'}</div>
           </div>
         `).join('') || '<p style="color:var(--dim)">No lessons extracted yet. Run derive_lessons!</p>';
       }
@@ -237,10 +237,10 @@
         const data = await res.json();
         document.getElementById('template-list').innerHTML = data.map(t => `
           <div class="card" style="border-top: 2px solid var(--accent);">
-            <strong>${escapeHtml(t.name)}</strong>
-            <p style="color:var(--dim); font-size:0.8rem;">${escapeHtml(t.description)}</p>
+            <strong>${escapeHtml(t.title)}</strong>
+            <p style="color:var(--dim); font-size:0.8rem;">${escapeHtml(t.usage_notes)}</p>
             <pre>${escapeHtml(t.template_text)}</pre>
-            <div style="margin-top:10px; font-size:0.7rem;">SUCCESS SCORE: ${t.success_score}%</div>
+            <div style="margin-top:10px; font-size:0.7rem;">SUCCESS SCORE: ${t.success_score}% • REVIEW: ${t.approved === 1 ? 'APPROVED' : t.deprecated === 1 ? 'REJECTED' : 'PENDING'}</div>
           </div>
         `).join('') || '<p style="color:var(--dim)">Prompt library is currently empty.</p>';
       }

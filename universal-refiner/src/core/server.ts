@@ -26,6 +26,14 @@ import { CorrelationEngine } from "../history/correlation-engine.js";
 import { PromptOptimizer } from "../refiners/prompt-optimizer.js";
 import { TemplateGenerator } from "../history/template-generator.js";
 import { BackgroundAutonomyService } from "./background-service.js";
+import {
+  LocalOpenAiProvider,
+  McpSamplingProvider,
+  SemanticProvider,
+  SemanticProviderChain,
+  SemanticResponse,
+} from "./semantic-provider.js";
+import { parseStructuredResponse } from "./structured-response.js";
 
 export class PromptRefinerServer {
   private server: Server;
@@ -33,6 +41,7 @@ export class PromptRefinerServer {
   private samplingUnavailableReason: string | null = null;
   private eventStore: EventStore;
   private backgroundAutonomy: BackgroundAutonomyService | null = null;
+  private semanticProviders: SemanticProviderChain;
 
   constructor(rootPath: string = ".") {
     this.rootPath = rootPath;
@@ -41,7 +50,49 @@ export class PromptRefinerServer {
       { name: "prompt-refiner", version: getPackageVersion() },
       { capabilities: { tools: {}, logging: {}, experimental: { sampling: {} } } }
     );
+    this.semanticProviders = this.createSemanticProviderChain();
     this.setupToolHandlers();
+  }
+
+  private createSemanticProviderChain(): SemanticProviderChain {
+    const config = ConfigManager.getSemanticConfig(this.rootPath);
+    const providers: SemanticProvider[] = [];
+
+    if (config.localEnabled) {
+      try {
+        providers.push(new LocalOpenAiProvider(config));
+      } catch (error) {
+        RuntimeLogger.warn("Local semantic provider configuration rejected", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    if (config.mcpSamplingEnabled) {
+      providers.push(new McpSamplingProvider(this.requestMcpSamplingText.bind(this)));
+    }
+
+    return new SemanticProviderChain(providers, this.recordSemanticSuccess.bind(this));
+  }
+
+  private recordSemanticSuccess(response: SemanticResponse, request: { taskName: string }) {
+    const details = {
+      taskName: request.taskName,
+      provider: response.provider,
+      model: response.model,
+      latencyMs: response.latencyMs,
+      promptTokens: response.promptTokens,
+      completionTokens: response.completionTokens,
+      fallbackFrom: response.fallbackFrom,
+    };
+    RuntimeLogger.info(`${request.taskName} semantic request completed`, details);
+    this.eventStore.recordEvent({
+      id: `evt_semantic_${Date.now()}_${Math.floor(Math.random() * 100000)}`,
+      event_type: "semantic_request_completed",
+      repo_id: path.basename(this.rootPath),
+      summary: `${request.taskName} completed with ${response.provider}/${response.model}`,
+      details_json: JSON.stringify(details),
+    });
+    CommandCenterDashboard.log(`${request.taskName}: ${response.provider}/${response.model} in ${response.latencyMs}ms`);
   }
 
   private async scoutProject(query?: string): Promise<ProjectContext> {
@@ -94,7 +145,7 @@ export class PromptRefinerServer {
     CommandCenterDashboard.log(`Semantic Intelligence unavailable: ${reason}`);
   }
 
-  public async requestModelText(taskName: string, userPrompt: string, maxTokens: number): Promise<string | null> {
+  private async requestMcpSamplingText(userPrompt: string, maxTokens: number): Promise<string | null> {
     if (this.samplingUnavailableReason) {
       return null;
     }
@@ -120,12 +171,16 @@ export class PromptRefinerServer {
         return null;
       }
 
-      RuntimeLogger.warn(`${taskName} sampling request failed`, {
+      RuntimeLogger.warn(`MCP sampling request failed`, {
         rootPath: this.rootPath,
         error: error instanceof Error ? error.stack || error.message : String(error),
       });
       return null;
     }
+  }
+
+  public async requestModelText(taskName: string, userPrompt: string, maxTokens: number): Promise<string | null> {
+    return this.semanticProviders.requestText({ taskName, prompt: userPrompt, maxTokens });
   }
 
   private async lintSemantic(prompt: string, ctx: ProjectContext): Promise<any[]> {
@@ -152,7 +207,7 @@ Output ONLY the JSON array. If no gaps, return [].`,
     }
 
     try {
-      return JSON.parse(responseText);
+      return parseStructuredResponse<any[]>(responseText);
     } catch (error) {
       RuntimeLogger.warn("Semantic analysis returned invalid JSON", {
         rootPath: this.rootPath,
@@ -238,6 +293,35 @@ Output ONLY the JSON array. If no gaps, return [].`,
           }
         },
         {
+          name: "list_learning_candidates",
+          description: "Lists review-gated lesson and prompt-template candidates for the current repository.",
+          inputSchema: { type: "object", properties: {} }
+        },
+        {
+          name: "review_lesson",
+          description: "Approves or rejects a proposed lesson before it can influence future prompts.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              id: { type: "string" },
+              approved: { type: "boolean" }
+            },
+            required: ["id", "approved"]
+          }
+        },
+        {
+          name: "review_template",
+          description: "Approves or rejects a proposed prompt template.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              id: { type: "string" },
+              approved: { type: "boolean" }
+            },
+            required: ["id", "approved"]
+          }
+        },
+        {
           name: "ingest_pattern",
           description: "Saves a learned engineering pattern to the project's persistent memory.",
           inputSchema: {
@@ -295,7 +379,8 @@ Output ONLY the JSON array. If no gaps, return [].`,
             properties: {
               prompt_id: { type: "string", description: "The tracking ID found in the refined prompt (e.g., 'ref_123...')" },
               output_summary: { type: "string", description: "A concise summary of what was achieved or the final response text." },
-              artifacts_json: { type: "string", description: "Optional: JSON string of any artifacts created (files, links, etc.)." }
+              artifacts_json: { type: "string", description: "Optional: JSON string of any artifacts created (files, links, etc.)." },
+              status: { type: "string", enum: ["completed", "failed"], description: "Verified execution outcome. Defaults to completed." }
             },
             required: ["prompt_id", "output_summary"]
           }
@@ -381,7 +466,7 @@ Output ONLY the JSON array. If no gaps, return [].`,
             }
 
             try {
-              const proposals = JSON.parse(responseText);
+              const proposals = parseStructuredResponse<Array<{ id: string; category: string; description: string }>>(responseText);
               for (const p of proposals) {
                 LocalBrain.savePattern({ ...p, isProposed: true }, this.rootPath);
               }
@@ -397,6 +482,28 @@ Output ONLY the JSON array. If no gaps, return [].`,
             LocalBrain.approvePattern(id, this.rootPath);
             CommandCenterDashboard.log(`Rule Approved: ${id}`);
             return { content: [{ type: "text", text: "Rule '" + id + "' promoted!" }] };
+          }
+          case "list_learning_candidates": {
+            const candidates = this.eventStore.getLearningCandidates(path.basename(this.rootPath));
+            return { content: [{ type: "text", text: JSON.stringify(candidates) }] };
+          }
+          case "review_lesson": {
+            const { id, approved } = z.object({ id: z.string(), approved: z.boolean() }).parse(request.params.arguments);
+            const changed = this.eventStore.reviewLesson(path.basename(this.rootPath), id, approved);
+            if (!changed) {
+              throw new McpError(ErrorCode.InvalidParams, `Pending lesson not found: ${id}`);
+            }
+            CommandCenterDashboard.log(`Lesson ${approved ? "approved" : "rejected"}: ${id}`);
+            return { content: [{ type: "text", text: `Lesson ${id} ${approved ? "approved" : "rejected"}.` }] };
+          }
+          case "review_template": {
+            const { id, approved } = z.object({ id: z.string(), approved: z.boolean() }).parse(request.params.arguments);
+            const changed = this.eventStore.reviewTemplate(path.basename(this.rootPath), id, approved);
+            if (!changed) {
+              throw new McpError(ErrorCode.InvalidParams, `Pending template not found: ${id}`);
+            }
+            CommandCenterDashboard.log(`Template ${approved ? "approved" : "rejected"}: ${id}`);
+            return { content: [{ type: "text", text: `Template ${id} ${approved ? "approved" : "rejected"}.` }] };
           }
           case "ingest_pattern": {
             const args = z.object({
@@ -480,10 +587,11 @@ Output ONLY the JSON array. If no gaps, return [].`,
             return { content: [{ type: "text", text: "Successfully completed template generation cycle." }] };
           }
           case "record_agent_output": {
-            const { prompt_id, output_summary, artifacts_json } = z.object({
+            const { prompt_id, output_summary, artifacts_json, status } = z.object({
               prompt_id: z.string(),
               output_summary: z.string(),
-              artifacts_json: z.string().optional()
+              artifacts_json: z.string().optional(),
+              status: z.enum(["completed", "failed"]).optional()
             }).parse(request.params.arguments);
 
             CommandCenterDashboard.log(`Recording agent output for prompt ${prompt_id.substring(0, 10)}...`);
@@ -498,7 +606,7 @@ Output ONLY the JSON array. If no gaps, return [].`,
                 prompt_id: prompt_id,
                 workflow_name: "external-agent",
                 executor_name: agentName,
-                status: "completed",
+                status: status || "completed",
                 started_at: now,
                 ended_at: now,
                 result_summary: output_summary,
@@ -507,7 +615,7 @@ Output ONLY the JSON array. If no gaps, return [].`,
             } else {
               this.eventStore.updateExecution({
                 id: execution.id,
-                status: "completed",
+                status: status || "completed",
                 ended_at: now,
                 result_summary: output_summary,
                 artifacts_json: artifacts_json || execution.artifacts_json

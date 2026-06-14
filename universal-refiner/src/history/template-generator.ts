@@ -1,5 +1,6 @@
 import { EventStore } from "./event-store.js";
 import { RuntimeLogger } from "../core/logger.js";
+import { parseStructuredResponse } from "../core/structured-response.js";
 
 export class TemplateGenerator {
   private eventStore: EventStore;
@@ -68,7 +69,15 @@ Output ONLY the JSON object.
     if (!response) return;
 
     try {
-      const data = JSON.parse(response);
+      const data = parseStructuredResponse<{
+        templates: Array<{
+          name: string;
+          category: string;
+          template_text: string;
+          usage_notes: string;
+          success_score: number;
+        }>;
+      }>(response);
       for (const t of data.templates) {
         const templateId = `tpl_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
         this.eventStore.recordTemplate({

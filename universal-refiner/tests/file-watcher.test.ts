@@ -140,6 +140,13 @@ describe("FileWatcher", () => {
     expect(events.filter((e) => e.path.endsWith(".log"))).toHaveLength(0);
   }, 15_000);
 
+  it("does not crash when chokidar reports an error without an error listener", () => {
+    watcher = new FileWatcher(tmpDir);
+    watcher.start();
+
+    expect(() => (watcher as any).inner.emit("error", new Error("permission denied"))).not.toThrow();
+  });
+
   // -----------------------------------------------------------------------
   // stop() — no further events after stop
   // -----------------------------------------------------------------------

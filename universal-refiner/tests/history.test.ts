@@ -72,4 +72,79 @@ describe("EventStore", () => {
     expect(eRow).toBeDefined();
     expect(eRow.event_type).toBe("prompt_received");
   });
+
+  it("should expose only approved lessons to future refinements", () => {
+    const store = EventStore.getInstance();
+    store.recordLesson({
+      id: "pending",
+      repo_id: "repo",
+      lesson_type: "quality",
+      title: "Pending",
+      summary: "Do not inject yet",
+      confidence: "high",
+      source: "test",
+    });
+    store.recordLesson({
+      id: "approved",
+      repo_id: "repo",
+      lesson_type: "quality",
+      title: "Approved",
+      summary: "Inject this",
+      confidence: "medium",
+      source: "test",
+      approved: 1,
+    });
+
+    expect(store.getRecentLessons("repo").map(lesson => lesson.id)).toEqual(["approved"]);
+  });
+
+  it("should persist learning candidate approval and rejection", () => {
+    const store = EventStore.getInstance();
+    store.recordLesson({
+      id: "lesson",
+      repo_id: "repo",
+      lesson_type: "quality",
+      title: "Candidate",
+      summary: "Candidate summary",
+      confidence: "high",
+      source: "test",
+    });
+    store.recordTemplate({
+      id: "template",
+      repo_id: "repo",
+      category: "feature",
+      title: "Candidate template",
+      template_text: "Build [THING]",
+      usage_notes: "test",
+      source_type: "test",
+      success_score: 80,
+    });
+
+    expect(store.getLearningCandidates("repo").lessons).toHaveLength(1);
+    expect(store.reviewLesson("other-repo", "lesson", true)).toBe(false);
+    expect(store.reviewLesson("repo", "lesson", true)).toBe(true);
+    expect(store.reviewTemplate("other-repo", "template", false)).toBe(false);
+    expect(store.reviewTemplate("repo", "template", false)).toBe(true);
+    expect(store.getLearningCandidates("repo")).toEqual({ lessons: [], templates: [] });
+    expect(store.getRecentLessons("repo").map(lesson => lesson.id)).toContain("lesson");
+  });
+
+  it("should idempotently record an already ingested commit", () => {
+    const store = EventStore.getInstance();
+    const commit = {
+      id: "commit-1",
+      repo_id: "repo",
+      sha: "abc123",
+      author: "Acceptance",
+      message: "feat: acceptance",
+      committed_at: "2026-06-14T10:00:00Z",
+    };
+
+    store.recordCommit(commit);
+    expect(() => store.recordCommit(commit)).not.toThrow();
+
+    const db = (store as any).db;
+    expect(db.prepare("SELECT COUNT(*) AS count FROM commits WHERE id = ?").get(commit.id).count).toBe(1);
+    expect(db.prepare("SELECT COUNT(*) AS count FROM events WHERE commit_id = ?").get(commit.id).count).toBe(1);
+  });
 });

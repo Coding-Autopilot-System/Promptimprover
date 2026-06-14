@@ -49,4 +49,22 @@ describe("LessonExtractor", () => {
     expect(lesson).toBeDefined();
     expect(lesson.title).toBe("Authentication Best Practice");
   });
+
+  it("should not learn from failed executions", async () => {
+    const store = EventStore.getInstance();
+    const db = (store as any).db;
+    store.recordPrompt({ id: "p-failed", repo_id: "test", client: "cli", raw_prompt: "Broken task" });
+    db.prepare("INSERT INTO commits (id, repo_id, sha, message, committed_at) VALUES (?, ?, ?, ?, ?)")
+      .run("c-failed", "test", "sha-failed", "fix: failed attempt", "2026-04-12T10:00:00Z");
+    db.prepare("INSERT INTO executions (id, prompt_id, workflow_name, executor_name, status, started_at) VALUES (?, ?, ?, ?, ?, ?)")
+      .run("e-failed", "p-failed", "test", "test", "failed", "2026-04-12T09:00:00Z");
+    db.prepare("INSERT INTO execution_commits (execution_id, commit_id) VALUES (?, ?)")
+      .run("e-failed", "c-failed");
+
+    const mockRequestModel = vi.fn();
+    await new LessonExtractor(mockRequestModel).extractNewLessons();
+
+    expect(mockRequestModel).not.toHaveBeenCalled();
+    expect(db.prepare("SELECT * FROM lessons WHERE prompt_id = ?").get("p-failed")).toBeUndefined();
+  });
 });

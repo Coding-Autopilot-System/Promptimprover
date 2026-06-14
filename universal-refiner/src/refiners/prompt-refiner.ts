@@ -2,13 +2,10 @@ import { ProjectContext } from "../detectors/project-scout.js";
 
 export class PromptRefiner {
   static calculateGain(original: string, refined: string, ctx: ProjectContext): number {
-    const originalLen = original.length;
-    const refinedLen = refined.length;
-    
-    // Base gain from length/detail
-    let gain = (refinedLen / originalLen) * 10;
-    
-    // Context bonuses
+    // Score evidence-backed context enrichment, not output verbosity.
+    let gain = 10;
+
+    if (original.trim().length > 0 && refined.includes(original)) gain += 5;
     if (ctx.relevantSnippets && ctx.relevantSnippets.length > 0) gain += 25;
     if (ctx.learnedPatterns && ctx.learnedPatterns.length > 0) gain += 15;
     if (ctx.customMandates && ctx.customMandates.length > 0) gain += 20;

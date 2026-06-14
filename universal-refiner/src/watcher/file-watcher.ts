@@ -25,7 +25,7 @@ export const MEANINGFUL_EXTENSIONS = new Set([".ts", ".js", ".md", ".txt", ".pro
  * Path segments that mark noise directories (AUTO-02).
  * Used as a secondary in-process guard after chokidar's ignore patterns.
  */
-export const NOISE_PATH_SEGMENTS = ["node_modules", "dist", ".git", "coverage"];
+export const NOISE_PATH_SEGMENTS = ["node_modules", "dist", ".git", "coverage", ".pytest_cache"];
 
 /** File suffixes that mark noise files (AUTO-02). */
 export const NOISE_SUFFIXES = [".log", ".tmp"];
@@ -38,6 +38,7 @@ const CHOKIDAR_IGNORE: (string | RegExp)[] = [
   "**/*.log",
   "**/*.tmp",
   "**/coverage/**",
+  "**/.pytest_cache/**",
 ];
 
 // ---------------------------------------------------------------------------
@@ -96,7 +97,9 @@ export class FileWatcher extends EventEmitter {
     this.inner.on("unlink", (filePath) => this.emitChange("unlink", filePath));
     this.inner.on("error", (err: unknown) => {
       RuntimeLogger.error("[FileWatcher] Watcher error", err);
-      this.emit("error", err instanceof Error ? err : new Error(String(err)));
+      if (this.listenerCount("error") > 0) {
+        this.emit("error", err instanceof Error ? err : new Error(String(err)));
+      }
     });
   }
 
