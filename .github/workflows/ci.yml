@@ -12,29 +12,24 @@ jobs:
       run:
         working-directory: universal-refiner
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup Node 22
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: '22'
 
       - name: Install dependencies
-        run: npm install --no-fund
+        run: npm ci --no-fund
 
       - name: Rebuild native modules
         run: npm rebuild better-sqlite3
 
-      - name: Generate version file
-        run: node scripts/sync-version.mjs
-
-      - name: Type check
-        run: npx tsc --noEmit
+      - name: Build
+        run: npm run build
 
       - name: Run tests
-        run: |
-          chmod +x node_modules/.bin/vitest 2>/dev/null || true
-          node_modules/.bin/vitest run --exclude '**/correlation.test.ts'
+        run: npm test
 
   acceptance:
     runs-on: ubuntu-latest
@@ -48,8 +43,8 @@ jobs:
           - primary
           - reversed
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: '22'
           cache: npm
@@ -71,8 +66,8 @@ jobs:
       run:
         working-directory: universal-refiner
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: '22'
           cache: npm
