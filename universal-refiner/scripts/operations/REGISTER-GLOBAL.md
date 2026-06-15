@@ -25,7 +25,7 @@ Optional overrides:
   -ObsidianVaultPath 'C:\repo\global.obsidian'
 ```
 
-The script preserves unrelated JSON and TOML configuration. In `-Apply` mode it creates timestamped backups before changed files are replaced through same-directory atomic UTF-8 writes. The doctor reports mojibake and suspicious plaintext credential field paths without printing credential values.
+The script preserves unrelated JSON and TOML configuration. In `-Apply` mode it first preflights every target, then creates timestamped backups before changed files are replaced through same-directory atomic UTF-8 writes. Apply is refused when invalid JSON, mojibake, or suspicious plaintext credential fields are detected. Diagnostics print field paths, never credential values.
 
 Exit codes:
 
