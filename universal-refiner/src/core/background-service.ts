@@ -3,6 +3,7 @@ import { CommitIngester } from "../history/commit-ingest.js";
 import { LessonExtractor } from "../history/lesson-extractor.js";
 import { CorrelationEngine } from "../history/correlation-engine.js";
 import { GitPoller } from "../history/git-poller.js";
+import { AutoPilotStatus } from "./autopilot-status.js";
 import { RuntimeLogger } from "./logger.js";
 import { CommandCenterDashboard } from "./dashboard.js";
 import { SerializedJobQueue } from "./job-queue.js";
@@ -29,7 +30,10 @@ export class BackgroundAutonomyService {
     this.requestModelText = requestModelText;
     if (gitPollIntervalMs !== null) {
       this.gitPoller = new GitPoller(rootPath, gitPollIntervalMs);
-      this.gitPoller.on("commits", () => this.triggerAutonomy());
+      this.gitPoller.on("commits", (count: number) => {
+        AutoPilotStatus.record(`Git poll detected ${count} new commit(s)`, "git_commit");
+        this.triggerAutonomy();
+      });
     }
   }
 
@@ -54,7 +58,14 @@ export class BackgroundAutonomyService {
 
     this.watcher.on('all', (event, filePath) => {
       RuntimeLogger.debug(`File change detected: ${event} ${filePath}`);
+      AutoPilotStatus.record(`File ${event}: ${filePath}`, "file_change");
       this.triggerAutonomy();
+    });
+    this.watcher.on("error", (error) => {
+      AutoPilotStatus.setIdle();
+      AutoPilotStatus.record("Watcher degraded", "error");
+      RuntimeLogger.error("Background autonomy watcher failed", error);
+      CommandCenterDashboard.log("Background Autonomy: Watcher degraded. See logs.");
     });
 
     this.gitPoller?.start();
@@ -75,18 +86,41 @@ export class BackgroundAutonomyService {
   }
 
   private async runCycles() {
+    AutoPilotStatus.setBusy();
+    AutoPilotStatus.record("Cycle started", "cycle_start");
+    CommandCenterDashboard.log("Background Autonomy: Change detected. Triggering intelligence cycles...");
     try {
-      CommandCenterDashboard.log("Background Autonomy: Change detected. Triggering intelligence cycles...");
       const ingestedCount = await CommitIngester.ingestLatest(this.rootPath, 100);
+      if (ingestedCount > 0) {
+        AutoPilotStatus.addCommits(ingestedCount);
+        AutoPilotStatus.record(`Ingested ${ingestedCount} commit(s)`, "git_commit");
+      }
       CommandCenterDashboard.log(`Background Autonomy: Ingested ${ingestedCount} commits.`);
 
       const engine = new CorrelationEngine();
       const extractor = new LessonExtractor(this.requestModelText);
-      await engine.correlateAll();
-      await extractor.extractNewLessons();
+      const lessonsBefore = AutoPilotStatus.getSnapshot().stats.lessonsExtracted;
+      const results = await Promise.allSettled([
+        engine.correlateAll(),
+        extractor.extractNewLessons(),
+      ]);
+      const rejected = results.find((result): result is PromiseRejectedResult => result.status === "rejected");
+      if (rejected) {
+        throw rejected.reason;
+      }
+      const lessonsAfter = AutoPilotStatus.getSnapshot().stats.lessonsExtracted;
+      if (lessonsAfter > lessonsBefore) {
+        AutoPilotStatus.record(`Extracted ${lessonsAfter - lessonsBefore} lesson(s)`, "lesson");
+      }
+
+      AutoPilotStatus.incrementCycles();
+      AutoPilotStatus.setActive();
+      AutoPilotStatus.record("Cycle complete", "cycle_complete");
       CommandCenterDashboard.log("Background Autonomy: Correlation and lesson extraction complete.");
 
     } catch (error) {
+      AutoPilotStatus.setIdle();
+      AutoPilotStatus.record(`Cycle failed: ${error instanceof Error ? error.message : String(error)}`, "error");
       RuntimeLogger.error("Background Autonomy cycle failed", error);
       CommandCenterDashboard.log("Background Autonomy: Cycle failed. See logs.");
       throw error;

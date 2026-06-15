@@ -199,7 +199,9 @@ describe("dashboard event stream and render failures", () => {
 
     const response = await app.request("/api/events");
 
-    expect(response.status).toBe(500);
+      expect(response.status).toBe(500);
+      expect(html).toContain("See sanitized runtime logs");
+      expect(html).not.toContain("Could not find dashboard.html");
     expect(await response.text()).toBe("Dashboard event stream unavailable");
   });
 

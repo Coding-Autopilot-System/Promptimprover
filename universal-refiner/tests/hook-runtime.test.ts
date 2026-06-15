@@ -11,8 +11,10 @@ import {
   extractPromptId,
   loadState,
   parseHookInput,
+  readHookInput,
   runPostExecution,
   runPrePrompt,
+  sanitizeError,
   saveState,
   statePath,
 } from "../hooks/lib/hook-runtime.js";
@@ -38,6 +40,40 @@ describe("cross-CLI hook runtime", () => {
     expect(extractPromptId('{"promptId":"prm_123","gaps":[]}')).toBe("prm_123");
     expect(extractPromptId('{"promptId":123}')).toBeUndefined();
     expect(extractPromptId("not json")).toBeUndefined();
+  });
+
+  it("bounds total hook input size and sanitizes failures", () => {
+    const file = path.join(path.dirname(statePath(input)), "bounded-input.json");
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, '{"prompt":"ok"}');
+    const descriptor = fs.openSync(file, "r");
+    expect(readHookInput(descriptor, 32)).toEqual({ prompt: "ok" });
+    fs.closeSync(descriptor);
+
+    const invalidLimitDescriptor = fs.openSync(file, "r");
+    expect(readHookInput(invalidLimitDescriptor, 0)).toEqual({ prompt: "ok" });
+    fs.closeSync(invalidLimitDescriptor);
+
+    fs.writeFileSync(file, "x".repeat(33));
+    const oversizedDescriptor = fs.openSync(file, "r");
+    let oversizedError: unknown;
+    try {
+      readHookInput(oversizedDescriptor, 32);
+    } catch (error) {
+      oversizedError = error;
+    } finally {
+      fs.closeSync(oversizedDescriptor);
+      fs.rmSync(file, { force: true });
+    }
+    expect(sanitizeError(oversizedError)).toBe("input-too-large");
+
+    expect(sanitizeError(Object.assign(new Error("secret path"), { code: -32001 }))).toBe("timeout");
+    expect(sanitizeError(Object.assign(new Error("secret timeout"), { code: "ETIMEDOUT" }))).toBe("timeout");
+    expect(sanitizeError(Object.assign(new Error("secret transport"), { code: -32000 }))).toBe("transport-error");
+    expect(sanitizeError(Object.assign(new Error("secret transport"), { code: "ECONNRESET" }))).toBe("transport-error");
+    expect(sanitizeError(new SyntaxError("secret input"))).toBe("invalid-input");
+    expect(sanitizeError(new Error("secret generic"))).toBe("hook-error");
+    expect(sanitizeError("secret unknown")).toBe("hook-error");
   });
 
   it("detects explicit and event-derived clients", () => {
@@ -92,6 +128,8 @@ describe("cross-CLI hook runtime", () => {
   it("uses stable state paths and removes invalid or stale state", () => {
     expect(statePath(input)).toBe(statePath(input));
     expect(statePath({ sessionId: "camel", cwd: "C:/repo" })).not.toBe(statePath(input));
+    expect(statePath({ ...input, request_id: "one" })).not.toBe(statePath({ ...input, request_id: "two" }));
+    expect(statePath({ ...input, hookId: "one" })).not.toBe(statePath({ ...input, hookId: "two" }));
     expect(statePath({})).toMatch(/promptimprover-hooks[\\/].+\.json$/);
 
     saveState(input, { promptId: "", client: "gemini", createdAt: new Date().toISOString() });
@@ -166,5 +204,13 @@ describe("cross-CLI hook runtime", () => {
       output_summary: "codex completed the tracked turn; output_length=6.",
       artifacts_json: JSON.stringify({ client: "codex", hook_event: "manual", output_length: 6 }),
     }));
+  });
+
+  it("clears correlation state even when post recording fails", async () => {
+    saveState(input, { promptId: "stale-if-retained", client: "gemini", createdAt: new Date().toISOString() });
+    const call = vi.fn().mockRejectedValue(new Error("recording failed"));
+
+    await expect(runPostExecution(input, call)).rejects.toThrow("recording failed");
+    expect(loadState(input)).toBeUndefined();
   });
 });

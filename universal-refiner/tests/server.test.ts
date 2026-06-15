@@ -9,6 +9,9 @@ const lifecycle = vi.hoisted(() => ({
   connect: vi.fn(),
   createMessage: vi.fn(),
   backgroundStart: vi.fn(),
+  backgroundStop: vi.fn(),
+  backgroundIdle: vi.fn(),
+  close: vi.fn(),
 }));
 
 // Mock MCP SDK
@@ -18,6 +21,7 @@ vi.mock("@modelcontextprotocol/sdk/server/index.js", () => {
       setRequestHandler = vi.fn();
       connect = lifecycle.connect;
       createMessage = lifecycle.createMessage;
+      close = lifecycle.close;
     }
   };
 });
@@ -30,6 +34,8 @@ vi.mock("@modelcontextprotocol/sdk/server/stdio.js", () => {
 vi.mock("../src/core/background-service.js", () => ({
   BackgroundAutonomyService: class {
     start = lifecycle.backgroundStart;
+    stop = lifecycle.backgroundStop;
+    idle = lifecycle.backgroundIdle;
   },
 }));
 
@@ -40,6 +46,8 @@ describe("PromptRefinerServer", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     lifecycle.connect.mockResolvedValue(undefined);
+    lifecycle.close.mockResolvedValue(undefined);
+    lifecycle.backgroundIdle.mockResolvedValue(undefined);
     lifecycle.createMessage.mockResolvedValue({ content: { type: "text", text: "[]" } });
     testDir = fs.mkdtempSync(path.join(os.tmpdir(), "server-test-"));
     process.env.PROMPT_REFINER_GLOBAL_DIR = testDir;
@@ -69,10 +77,21 @@ describe("PromptRefinerServer", () => {
     expect(mockServerInstance.setRequestHandler).toHaveBeenCalledTimes(2); // One for ListTools, one for CallTool
   });
 
-  it("connects transport and starts background autonomy", async () => {
+  it("connects transport and starts background autonomy only when requested", async () => {
     await server.run();
     expect(lifecycle.connect).toHaveBeenCalledOnce();
+    expect(lifecycle.backgroundStart).not.toHaveBeenCalled();
+
+    await server.stop();
+    await server.stop();
+    expect(lifecycle.close).toHaveBeenCalledOnce();
+
+    const background = new PromptRefinerServer(".");
+    await background.run({ background: true });
     expect(lifecycle.backgroundStart).toHaveBeenCalledOnce();
+    await background.stop();
+    expect(lifecycle.backgroundStop).toHaveBeenCalledOnce();
+    expect(lifecycle.backgroundIdle).toHaveBeenCalledOnce();
   });
 
   it("handles MCP sampling text, non-text, unsupported, and transient failures", async () => {
