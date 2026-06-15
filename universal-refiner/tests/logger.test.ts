@@ -70,15 +70,20 @@ describe("RuntimeLogger", () => {
 
   it("uses the home default and continues when file output fails", () => {
     const originalProfile = process.env.USERPROFILE;
+    const originalHome = process.env.HOME;
     process.env.USERPROFILE = directory;
+    process.env.HOME = directory;
     delete process.env.PROMPT_REFINER_GLOBAL_DIR;
     process.env.PROMPT_REFINER_LOG_LEVEL = "DEBUG";
-    const blockedPath = path.join(os.homedir(), ".refiner");
+    const blockedPath = path.join(directory, ".refiner");
     fs.writeFileSync(blockedPath, "not a directory");
 
     RuntimeLogger.debug("still rendered", new Error("with stack"));
 
     expect(consoleError).toHaveBeenCalledWith(expect.stringContaining("[DEBUG] still rendered"));
-    process.env.USERPROFILE = originalProfile;
+    if (originalProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = originalProfile;
+    if (originalHome === undefined) delete process.env.HOME;
+    else process.env.HOME = originalHome;
   });
 });
