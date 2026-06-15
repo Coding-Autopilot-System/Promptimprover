@@ -2,21 +2,35 @@ import * as chokidar from 'chokidar';
 import { CommitIngester } from "../history/commit-ingest.js";
 import { LessonExtractor } from "../history/lesson-extractor.js";
 import { CorrelationEngine } from "../history/correlation-engine.js";
+import { GitPoller } from "../history/git-poller.js";
 import { RuntimeLogger } from "./logger.js";
 import { CommandCenterDashboard } from "./dashboard.js";
+import { SerializedJobQueue } from "./job-queue.js";
 
 export class BackgroundAutonomyService {
   private watcher: chokidar.FSWatcher | null = null;
+  private gitPoller: GitPoller | null = null;
   private debounceTimer: NodeJS.Timeout | null = null;
   private rootPath: string;
   private requestModelText: (taskName: string, userPrompt: string, maxTokens: number) => Promise<string | null>;
+  private queue = new SerializedJobQueue();
 
+  /**
+   * @param gitPollIntervalMs Pass a number in milliseconds to enable git polling.
+   *   Defaults to null (disabled) so tests that use vi.runAllTimersAsync() are not
+   *   affected by an infinite setInterval.  The production server passes 30_000.
+   */
   constructor(
     rootPath: string,
-    requestModelText: (taskName: string, userPrompt: string, maxTokens: number) => Promise<string | null>
+    requestModelText: (taskName: string, userPrompt: string, maxTokens: number) => Promise<string | null>,
+    gitPollIntervalMs: number | null = null,
   ) {
     this.rootPath = rootPath;
     this.requestModelText = requestModelText;
+    if (gitPollIntervalMs !== null) {
+      this.gitPoller = new GitPoller(rootPath, gitPollIntervalMs);
+      this.gitPoller.on("commits", () => this.triggerAutonomy());
+    }
   }
 
   public start() {
@@ -39,10 +53,12 @@ export class BackgroundAutonomyService {
     });
 
     this.watcher.on('all', (event, filePath) => {
-      // Don't log every single file change to dashboard to avoid noise, but log to RuntimeLogger
       RuntimeLogger.debug(`File change detected: ${event} ${filePath}`);
       this.triggerAutonomy();
     });
+
+    this.gitPoller?.start();
+    this.queue.enqueue(`autonomy:${this.rootPath}`, () => this.runCycles());
   }
 
   private triggerAutonomy() {
@@ -50,33 +66,30 @@ export class BackgroundAutonomyService {
       clearTimeout(this.debounceTimer);
     }
 
-    this.debounceTimer = setTimeout(async () => {
-      await this.runCycles();
+    this.debounceTimer = setTimeout(() => {
+      const accepted = this.queue.enqueue(`autonomy:${this.rootPath}`, () => this.runCycles());
+      if (!accepted) {
+        RuntimeLogger.debug("Background autonomy cycle coalesced", { rootPath: this.rootPath });
+      }
     }, 3000);
   }
 
   private async runCycles() {
     try {
       CommandCenterDashboard.log("Background Autonomy: Change detected. Triggering intelligence cycles...");
-      
-      // a) CommitIngester.ingestLatest()
-      // We increase the limit significantly because the ingester now fetches only since last SHA
       const ingestedCount = await CommitIngester.ingestLatest(this.rootPath, 100);
       CommandCenterDashboard.log(`Background Autonomy: Ingested ${ingestedCount} commits.`);
 
-      // b) CorrelationEngine.correlateAll()
       const engine = new CorrelationEngine();
-      await engine.correlateAll();
-      CommandCenterDashboard.log("Background Autonomy: Correlation complete.");
-
-      // c) LessonExtractor.extractNewLessons()
       const extractor = new LessonExtractor(this.requestModelText);
+      await engine.correlateAll();
       await extractor.extractNewLessons();
-      CommandCenterDashboard.log("Background Autonomy: Lesson extraction complete.");
+      CommandCenterDashboard.log("Background Autonomy: Correlation and lesson extraction complete.");
 
     } catch (error) {
       RuntimeLogger.error("Background Autonomy cycle failed", error);
       CommandCenterDashboard.log("Background Autonomy: Cycle failed. See logs.");
+      throw error;
     }
   }
 
@@ -89,5 +102,10 @@ export class BackgroundAutonomyService {
       clearTimeout(this.debounceTimer);
       this.debounceTimer = null;
     }
+    this.gitPoller?.stop();
+  }
+
+  public async idle() {
+    await this.queue.idle();
   }
 }

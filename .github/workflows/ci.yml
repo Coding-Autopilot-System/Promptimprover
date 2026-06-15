@@ -1,37 +1,149 @@
 name: CI
 
 on:
+  workflow_dispatch:
   push:
-    branches: [ master ]
+    branches: [ master, main ]
   pull_request:
+
+permissions:
+  contents: read
 
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: universal-refiner
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup Node 22
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: '22'
 
       - name: Install dependencies
-        run: npm install --no-fund
+        run: npm ci --no-fund
 
       - name: Rebuild native modules
         run: npm rebuild better-sqlite3
 
-      - name: Generate version file
-        run: node scripts/sync-version.mjs
-
-      - name: Type check
-        run: npx tsc --noEmit
+      - name: Build
+        run: npm run build
 
       - name: Run tests
+        run: npm run test:coverage
+
+  acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: universal-refiner
+    strategy:
+      fail-fast: false
+      matrix:
+        model-order:
+          - primary
+          - reversed
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: universal-refiner/package-lock.json
+      - run: npm ci --no-fund
+      - run: npm rebuild better-sqlite3
+      - run: npm run build
+      - name: Run all-tool and provider acceptance
+        run: npm run test:acceptance
+      - name: Run fake-model semantic acceptance
+        env:
+          PROMPT_REFINER_PRIMARY_MODEL: ${{ matrix.model-order == 'primary' && 'gemma3:12b' || 'gemma3:1b' }}
+          PROMPT_REFINER_FALLBACK_MODEL: ${{ matrix.model-order == 'primary' && 'gemma3:1b' || 'gemma3:12b' }}
+        run: npm run acceptance:semantic
+
+  stress:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: universal-refiner
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: universal-refiner/package-lock.json
+      - run: npm ci --no-fund
+      - run: npm rebuild better-sqlite3
+      - run: npm run build
+      - name: Run restart and in-process concurrency tests
+        run: npm run test:stress
+      - name: Run multi-process EventStore stress
+        env:
+          PROMPT_REFINER_STRESS_WORKERS: '4'
+          PROMPT_REFINER_STRESS_WRITES: '100'
+        run: npm run stress:event-store
+
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: universal-refiner
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: universal-refiner/package-lock.json
+      - run: npm ci --no-fund
+      - run: npm rebuild better-sqlite3
+      - run: npm run build
+      - run: npm run test:coverage
+      - run: npm run test:acceptance
+      - run: npm run test:stress
+
+  supply-chain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: universal-refiner
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: universal-refiner/package-lock.json
+      - run: npm ci --no-fund
+      - run: npm run security:audit
+      - run: npm run security:secrets
+      - run: npm run build
+      - run: npm run package:check
+
+  release-gate:
+    if: always()
+    needs: [build-and-test, acceptance, stress, windows, supply-chain]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every enterprise gate
+        env:
+          BUILD: ${{ needs['build-and-test'].result }}
+          ACCEPTANCE: ${{ needs.acceptance.result }}
+          STRESS: ${{ needs.stress.result }}
+          WINDOWS: ${{ needs.windows.result }}
+          SUPPLY_CHAIN: ${{ needs['supply-chain'].result }}
         run: |
-          chmod +x node_modules/.bin/vitest 2>/dev/null || true
-          node_modules/.bin/vitest run --exclude '**/correlation.test.ts'
+          test "$BUILD" = "success"
+          test "$ACCEPTANCE" = "success"
+          test "$STRESS" = "success"
+          test "$WINDOWS" = "success"
+          test "$SUPPLY_CHAIN" = "success"

@@ -44,4 +44,30 @@ describe("PromptRefiner", () => {
     expect(refined).toContain("Agent A");
     expect(refined).toContain("Agent B");
   });
+
+  it("should not treat prompt verbosity as quality gain", () => {
+    const shortRefinement = PromptRefiner.calculateGain("task", "task with context", baseCtx);
+    const verboseRefinement = PromptRefiner.calculateGain("task", `task ${"detail ".repeat(1000)}`, baseCtx);
+    expect(verboseRefinement).toBe(shortRefinement);
+  });
+
+  it("should use selected approved templates as bounded refinement context", () => {
+    const approvedTemplates = [{
+      id: "feature-template",
+      category: "feature",
+      title: "Reviewed feature template",
+      templateText: "Implement [FEATURE] using existing project patterns.",
+      usageNotes: "Verify behavior with focused tests.",
+      relevanceScore: 92,
+      selectionReasons: ["category:feature"]
+    }];
+
+    const refined = PromptRefiner.refine("Create a login button", baseCtx, {}, undefined, { approvedTemplates });
+    const gain = PromptRefiner.calculateGain("Create a login button", refined, baseCtx, { approvedTemplates });
+
+    expect(refined).toContain("Approved Prompt Templates");
+    expect(refined).toContain("Reviewed feature template");
+    expect(refined).toContain("do not replace the user's intent");
+    expect(gain).toBeGreaterThan(PromptRefiner.calculateGain("Create a login button", refined, baseCtx));
+  });
 });

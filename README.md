@@ -79,6 +79,30 @@ cd Promptimprover
 
 Both installers perform a deterministic dependency install, run the full test suite, build the package, install it globally, and verify the `gemini-prompt-refiner` command. Add that command to your MCP client configuration. See the [Setup Guide](https://github.com/Coding-Autopilot-System/Promptimprover/wiki/Setup-Guide) for full configuration instructions.
 
+For optional automatic pre-prompt linting and post-execution recording, see the [cross-CLI automation guide](./docs/cross-cli-automation.md). Claude Code and Gemini CLI expose the required lifecycle hooks. Codex currently requires MCP-first instructions or explicit helper invocation because its hook lifecycle does not transparently intercept each prompt.
+
+## Local Semantic Model
+
+PromptImprover uses a local OpenAI-compatible endpoint before optional MCP sampling. The safe defaults target `http://localhost:9000/v1`, use `gemma3:12b` first, and fall back to `gemma3:1b`. If neither local model nor MCP sampling is available, rule-based refinement continues without semantic output.
+
+Override the defaults per repository with `.gemini-refiner.json`:
+
+```json
+{
+  "semantic": {
+    "localEnabled": true,
+    "mcpSamplingEnabled": true,
+    "baseUrl": "http://localhost:9000/v1",
+    "models": ["gemma3:12b", "gemma3:1b"],
+    "timeoutMs": 120000,
+    "temperature": 0.2,
+    "allowNonLoopback": false
+  }
+}
+```
+
+Non-loopback model endpoints are rejected unless `allowNonLoopback` is explicitly enabled. Generated lessons and templates remain pending until reviewed through the MCP learning-review tools.
+
 ## License
 
 MIT - see [LICENSE](LICENSE)

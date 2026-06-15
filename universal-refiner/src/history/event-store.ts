@@ -4,26 +4,39 @@ import * as os from "os";
 import * as fs from "fs";
 import { SCHEMA_V1 } from "./schema.js";
 import { RuntimeLogger } from "../core/logger.js";
+import { RepositoryIdentity, resolveRepositoryIdentity } from "./repository-identity.js";
+import type { PromptTemplateCandidate } from "../refiners/template-selector.js";
 
 export class EventStore {
   private db: Database.Database;
+  private dbPath: string;
   private static instance: EventStore | null = null;
 
-  private constructor() {
-    const dbPath = this.getDatabasePath();
-    this.ensureDirectory(path.dirname(dbPath));
-    this.db = new Database(dbPath);
-    this.initializeSchema();
+  private constructor(dbPath: string) {
+    this.dbPath = dbPath;
+    this.ensureDirectory(path.dirname(this.dbPath));
+    this.db = new Database(this.dbPath);
+    try {
+      this.initializeSchema();
+    } catch (error) {
+      this.db.close();
+      throw error;
+    }
   }
 
   static getInstance(): EventStore {
-    if (!this.instance) {
-      this.instance = new EventStore();
+    const dbPath = this.resolveDatabasePath();
+    if (!this.instance || this.instance.dbPath !== dbPath) {
+      try {
+        this.instance?.close();
+      } catch {
+      }
+      this.instance = new EventStore(dbPath);
     }
     return this.instance;
   }
 
-  private getDatabasePath(): string {
+  private static resolveDatabasePath(): string {
     const globalDir = process.env.PROMPT_REFINER_GLOBAL_DIR || path.join(os.homedir(), ".refiner");
     return path.join(globalDir, "events.db");
   }
@@ -36,6 +49,13 @@ export class EventStore {
 
   private initializeSchema() {
     try {
+      try {
+        this.db.pragma("journal_mode = WAL");
+      } catch (error) {
+        RuntimeLogger.warn("EventStore could not enable WAL mode; continuing with the current journal mode", error);
+      }
+      this.db.pragma("busy_timeout = 5000");
+      this.db.pragma("foreign_keys = ON");
       this.db.exec(SCHEMA_V1);
       RuntimeLogger.info("EventStore schema initialized successfully.");
     } catch (error) {
@@ -233,7 +253,7 @@ export class EventStore {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
-    stmt.run(
+    const result = stmt.run(
       commit.id,
       commit.repo_id,
       commit.sha,
@@ -244,6 +264,10 @@ export class EventStore {
       commit.changed_files_json || "[]",
       commit.diff_stats_json || "{}"
     );
+
+    if (result.changes === 0) {
+      return;
+    }
 
     this.recordEvent({
       id: `evt_${commit.sha}`,
@@ -360,18 +384,137 @@ export class EventStore {
     );
   }
 
+  ensureRepository(repoPath: string): RepositoryIdentity {
+    const identity = resolveRepositoryIdentity(repoPath);
+    const now = new Date().toISOString();
+    const existing = this.db.prepare("SELECT id FROM repos WHERE path = ?").get(identity.path) as { id: string } | undefined;
+    if (existing) {
+      return { ...identity, id: existing.id };
+    }
+
+    const transaction = this.db.transaction(() => {
+      this.db.prepare(`
+        INSERT OR IGNORE INTO repos (id, path, name, trusted, created_at, updated_at)
+        VALUES (?, ?, ?, 1, ?, ?)
+      `).run(identity.id, identity.path, identity.name, now, now);
+
+      const tables = ["sessions", "prompts", "commits", "events", "lessons", "prompt_clusters", "prompt_templates"];
+      for (const table of tables) {
+        this.db.prepare(`UPDATE ${table} SET repo_id = ? WHERE repo_id = ?`).run(identity.id, identity.legacyId);
+      }
+    });
+    transaction();
+    RuntimeLogger.info("Registered canonical repository identity", {
+      repoId: identity.id,
+      path: identity.path,
+      legacyId: identity.legacyId,
+    });
+    return identity;
+  }
+
+  getTemplates(repoId: string): PromptTemplateCandidate[] {
+    return this.db.prepare(`
+      SELECT
+        id,
+        repo_id AS repoId,
+        category,
+        title,
+        template_text AS templateText,
+        usage_notes AS usageNotes,
+        success_score AS successScore,
+        approved,
+        deprecated
+      FROM prompt_templates
+      WHERE repo_id = ? AND approved = 1 AND deprecated = 0
+      ORDER BY success_score DESC, updated_at DESC
+      LIMIT 100
+    `).all(repoId) as PromptTemplateCandidate[];
+  }
+
   getRecentLessons(repoId: string, limit = 10): any[] {
     const stmt = this.db.prepare(`
       SELECT * FROM lessons 
       WHERE repo_id = ? 
-      AND (approved = 1 OR confidence = 'high')
+      AND approved = 1
       ORDER BY created_at DESC 
       LIMIT ?
     `);
     return stmt.all(repoId, limit);
   }
 
+  getLearningCandidates(repoId: string): { lessons: any[]; templates: any[] } {
+    return {
+      lessons: this.db.prepare(`
+        SELECT id, lesson_type, title, summary, confidence, source, created_at
+        FROM lessons WHERE repo_id = ? AND approved = 0 ORDER BY created_at DESC
+      `).all(repoId),
+      templates: this.db.prepare(`
+        SELECT id, category, title, template_text, usage_notes, success_score, source_type, created_at
+        FROM prompt_templates WHERE repo_id = ? AND approved = 0 AND deprecated = 0 ORDER BY created_at DESC
+      `).all(repoId),
+    };
+  }
+
+  async backup(destinationPath: string): Promise<string> {
+    this.ensureDirectory(path.dirname(destinationPath));
+    await this.db.backup(destinationPath);
+
+    const backup = new Database(destinationPath, { readonly: true });
+    try {
+      const result = backup.pragma("integrity_check", { simple: true });
+      if (result !== "ok") {
+        throw new Error(`Backup integrity check failed: ${String(result)}`);
+      }
+    } finally {
+      backup.close();
+    }
+
+    return destinationPath;
+  }
+
+  static restore(backupPath: string): EventStore {
+    if (!fs.existsSync(backupPath)) {
+      throw new Error(`Backup does not exist: ${backupPath}`);
+    }
+
+    const backup = new Database(backupPath, { readonly: true });
+    try {
+      const result = backup.pragma("integrity_check", { simple: true });
+      if (result !== "ok") {
+        throw new Error(`Backup integrity check failed: ${String(result)}`);
+      }
+    } finally {
+      backup.close();
+    }
+
+    const dbPath = this.resolveDatabasePath();
+    this.instance?.close();
+    this.instance = null;
+    fs.copyFileSync(backupPath, dbPath);
+    this.instance = new EventStore(dbPath);
+    return this.instance;
+  }
+
+  reviewLesson(repoId: string, id: string, approved: boolean): boolean {
+    const result = this.db.prepare(`
+      UPDATE lessons SET approved = ?, updated_at = ? WHERE repo_id = ? AND id = ? AND approved = 0
+    `).run(approved ? 1 : -1, new Date().toISOString(), repoId, id);
+    return result.changes > 0;
+  }
+
+  reviewTemplate(repoId: string, id: string, approved: boolean): boolean {
+    const result = approved
+      ? this.db.prepare(`UPDATE prompt_templates SET approved = 1, updated_at = ? WHERE repo_id = ? AND id = ? AND approved = 0 AND deprecated = 0`)
+          .run(new Date().toISOString(), repoId, id)
+      : this.db.prepare(`UPDATE prompt_templates SET deprecated = 1, updated_at = ? WHERE repo_id = ? AND id = ? AND approved = 0`)
+          .run(new Date().toISOString(), repoId, id);
+    return result.changes > 0;
+  }
+
   close() {
     this.db.close();
+    if (EventStore.instance === this) {
+      EventStore.instance = null;
+    }
   }
 }

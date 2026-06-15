@@ -26,6 +26,17 @@ import { CorrelationEngine } from "../history/correlation-engine.js";
 import { PromptOptimizer } from "../refiners/prompt-optimizer.js";
 import { TemplateGenerator } from "../history/template-generator.js";
 import { BackgroundAutonomyService } from "./background-service.js";
+import {
+  LocalOpenAiProvider,
+  McpSamplingProvider,
+  SemanticProvider,
+  SemanticProviderChain,
+  SemanticResponse,
+} from "./semantic-provider.js";
+import { parseStructuredResponse } from "./structured-response.js";
+import { RepositoryIdentity } from "../history/repository-identity.js";
+import { ApprovedTemplateSelector } from "../refiners/template-selector.js";
+import { createABEvaluationRecord, evaluatePrompt } from "../evaluation/prompt-evaluator.js";
 
 export class PromptRefinerServer {
   private server: Server;
@@ -33,15 +44,62 @@ export class PromptRefinerServer {
   private samplingUnavailableReason: string | null = null;
   private eventStore: EventStore;
   private backgroundAutonomy: BackgroundAutonomyService | null = null;
+  private semanticProviders: SemanticProviderChain;
+  private repository: RepositoryIdentity;
+  private templateSelector: ApprovedTemplateSelector;
 
   constructor(rootPath: string = ".") {
     this.rootPath = rootPath;
     this.eventStore = EventStore.getInstance();
+    this.repository = this.eventStore.ensureRepository(rootPath);
+    this.templateSelector = new ApprovedTemplateSelector(this.eventStore);
     this.server = new Server(
       { name: "prompt-refiner", version: getPackageVersion() },
       { capabilities: { tools: {}, logging: {}, experimental: { sampling: {} } } }
     );
+    this.semanticProviders = this.createSemanticProviderChain();
     this.setupToolHandlers();
+  }
+
+  private createSemanticProviderChain(): SemanticProviderChain {
+    const config = ConfigManager.getSemanticConfig(this.rootPath);
+    const providers: SemanticProvider[] = [];
+
+    if (config.localEnabled) {
+      try {
+        providers.push(new LocalOpenAiProvider(config));
+      } catch (error) {
+        RuntimeLogger.warn("Local semantic provider configuration rejected", {
+          error: String(error),
+        });
+      }
+    }
+    if (config.mcpSamplingEnabled) {
+      providers.push(new McpSamplingProvider(this.requestMcpSamplingText.bind(this)));
+    }
+
+    return new SemanticProviderChain(providers, this.recordSemanticSuccess.bind(this));
+  }
+
+  private recordSemanticSuccess(response: SemanticResponse, request: { taskName: string }) {
+    const details = {
+      taskName: request.taskName,
+      provider: response.provider,
+      model: response.model,
+      latencyMs: response.latencyMs,
+      promptTokens: response.promptTokens,
+      completionTokens: response.completionTokens,
+      fallbackFrom: response.fallbackFrom,
+    };
+    RuntimeLogger.info(`${request.taskName} semantic request completed`, details);
+    this.eventStore.recordEvent({
+      id: `evt_semantic_${Date.now()}_${Math.floor(Math.random() * 100000)}`,
+      event_type: "semantic_request_completed",
+      repo_id: this.repository.id,
+      summary: `${request.taskName} completed with ${response.provider}/${response.model}`,
+      details_json: JSON.stringify(details),
+    });
+    CommandCenterDashboard.log(`${request.taskName}: ${response.provider}/${response.model} in ${response.latencyMs}ms`);
   }
 
   private async scoutProject(query?: string): Promise<ProjectContext> {
@@ -53,7 +111,7 @@ export class PromptRefinerServer {
     const predictive = ConfigManager.getPredictiveMandates();
     const snippets = query ? await NeuralSnippets.search(query, this.rootPath) : [];
     const activeIntents = AgenticBlackboard.getActiveIntents(this.rootPath);
-    const repoId = path.basename(this.rootPath);
+    const repoId = this.repository.id;
     const predictiveLessons = this.eventStore.getRecentLessons(repoId, 5);
 
     return {
@@ -89,12 +147,12 @@ export class PromptRefinerServer {
     RuntimeLogger.warn("MCP sampling is unavailable; semantic features will fall back to local-only behavior", {
       rootPath: this.rootPath,
       reason,
-      error: error instanceof Error ? error.stack || error.message : String(error),
+      error: String(error),
     });
     CommandCenterDashboard.log(`Semantic Intelligence unavailable: ${reason}`);
   }
 
-  public async requestModelText(taskName: string, userPrompt: string, maxTokens: number): Promise<string | null> {
+  private async requestMcpSamplingText(userPrompt: string, maxTokens: number): Promise<string | null> {
     if (this.samplingUnavailableReason) {
       return null;
     }
@@ -120,12 +178,16 @@ export class PromptRefinerServer {
         return null;
       }
 
-      RuntimeLogger.warn(`${taskName} sampling request failed`, {
+      RuntimeLogger.warn(`MCP sampling request failed`, {
         rootPath: this.rootPath,
-        error: error instanceof Error ? error.stack || error.message : String(error),
+        error: String(error),
       });
       return null;
     }
+  }
+
+  public async requestModelText(taskName: string, userPrompt: string, maxTokens: number): Promise<string | null> {
+    return this.semanticProviders.requestText({ taskName, prompt: userPrompt, maxTokens });
   }
 
   private async lintSemantic(prompt: string, ctx: ProjectContext): Promise<any[]> {
@@ -152,13 +214,13 @@ Output ONLY the JSON array. If no gaps, return [].`,
     }
 
     try {
-      return JSON.parse(responseText);
+      return parseStructuredResponse<any[]>(responseText);
     } catch (error) {
       RuntimeLogger.warn("Semantic analysis returned invalid JSON", {
         rootPath: this.rootPath,
         promptPreview: prompt.substring(0, 120),
         responsePreview: responseText.substring(0, 300),
-        error: error instanceof Error ? error.stack || error.message : String(error),
+        error: String(error),
       });
       CommandCenterDashboard.log(`Semantic Analysis returned invalid JSON.`);
       return [];
@@ -179,7 +241,10 @@ Output ONLY the JSON array. If no gaps, return [].`,
           description: "Performs modular analysis of a prompt and codebase.",
           inputSchema: {
             type: "object",
-            properties: { prompt: { type: "string" } },
+            properties: {
+              prompt: { type: "string" },
+              semantic: { type: "boolean", description: "Set false for latency-sensitive automation that needs rule-based linting only." }
+            },
             required: ["prompt"],
           },
         },
@@ -235,6 +300,35 @@ Output ONLY the JSON array. If no gaps, return [].`,
             type: "object",
             properties: { id: { type: "string", description: "The ID of the rule to approve." } },
             required: ["id"]
+          }
+        },
+        {
+          name: "list_learning_candidates",
+          description: "Lists review-gated lesson and prompt-template candidates for the current repository.",
+          inputSchema: { type: "object", properties: {} }
+        },
+        {
+          name: "review_lesson",
+          description: "Approves or rejects a proposed lesson before it can influence future prompts.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              id: { type: "string" },
+              approved: { type: "boolean" }
+            },
+            required: ["id", "approved"]
+          }
+        },
+        {
+          name: "review_template",
+          description: "Approves or rejects a proposed prompt template.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              id: { type: "string" },
+              approved: { type: "boolean" }
+            },
+            required: ["id", "approved"]
           }
         },
         {
@@ -295,9 +389,55 @@ Output ONLY the JSON array. If no gaps, return [].`,
             properties: {
               prompt_id: { type: "string", description: "The tracking ID found in the refined prompt (e.g., 'ref_123...')" },
               output_summary: { type: "string", description: "A concise summary of what was achieved or the final response text." },
-              artifacts_json: { type: "string", description: "Optional: JSON string of any artifacts created (files, links, etc.)." }
+              artifacts_json: { type: "string", description: "Optional: JSON string of any artifacts created (files, links, etc.)." },
+              status: { type: "string", enum: ["completed", "failed"], description: "Verified execution outcome. Defaults to completed." }
             },
             required: ["prompt_id", "output_summary"]
+          }
+        },
+        {
+          name: "evaluate_prompt",
+          description: "Scores a prompt with deterministic evidence indicators across five quality dimensions.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              prompt: { type: "string" },
+              baseline_prompt: { type: "string", description: "Optional original prompt used to measure intent preservation." }
+            },
+            required: ["prompt"]
+          }
+        },
+        {
+          name: "compare_prompt_variants",
+          description: "Compares prompt variants and separates heuristic preference from optional observed execution evidence.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              baseline_prompt: { type: "string" },
+              variant_a: { type: "string" },
+              variant_b: { type: "string" },
+              outcome_a: {
+                type: "object",
+                properties: {
+                  status: { type: "string", enum: ["completed", "failed", "cancelled"] },
+                  testsPassed: { type: "number" },
+                  testsFailed: { type: "number" },
+                  reworkCount: { type: "number" }
+                },
+                required: ["status"]
+              },
+              outcome_b: {
+                type: "object",
+                properties: {
+                  status: { type: "string", enum: ["completed", "failed", "cancelled"] },
+                  testsPassed: { type: "number" },
+                  testsFailed: { type: "number" },
+                  reworkCount: { type: "number" }
+                },
+                required: ["status"]
+              }
+            },
+            required: ["baseline_prompt", "variant_a", "variant_b"]
           }
         },
       ],
@@ -310,7 +450,10 @@ Output ONLY the JSON array. If no gaps, return [].`,
 
         switch (request.params.name) {
           case "lint_prompt": {
-            const { prompt } = z.object({ prompt: z.string() }).parse(request.params.arguments);
+            const { prompt, semantic } = z.object({
+              prompt: z.string(),
+              semantic: z.boolean().optional(),
+            }).parse(request.params.arguments);
             AgenticBlackboard.postIntent(agentName, "lint", prompt, this.rootPath);
             CommandCenterDashboard.log(`Scouting project for prompt: "${prompt.substring(0, 30)}..."`);
 
@@ -320,16 +463,16 @@ Output ONLY the JSON array. If no gaps, return [].`,
               client: "MCP",
               agent_name: agentName,
               raw_prompt: prompt,
-              repo_id: path.basename(this.rootPath)
+              repo_id: this.repository.id
             });
 
             const ctx = await this.scoutProject(prompt);
             const ruleGaps = PromptLinter.lint(prompt, ctx);
-            const semanticGaps = await this.lintSemantic(prompt, ctx);
+            const semanticGaps = semantic === false ? [] : await this.lintSemantic(prompt, ctx);
             const gaps = PromptLinter.mergeGaps(ruleGaps, semanticGaps);
 
             CommandCenterDashboard.log(`Found ${gaps.length} total gaps (Rule: ${ruleGaps.length}, Semantic: ${semanticGaps.length}).`);
-            return { content: [{ type: "text", text: JSON.stringify({ gaps, context: ctx }) }] };
+            return { content: [{ type: "text", text: JSON.stringify({ promptId, gaps, context: ctx }) }] };
           }
           case "create_questions": {
             const { gaps } = z.object({ gaps: z.array(z.any()) }).parse(request.params.arguments);
@@ -349,8 +492,13 @@ Output ONLY the JSON array. If no gaps, return [].`,
 
             const ctx = await this.scoutProject(original_prompt);
             const promptId = `ref_${Date.now()}`;
-            const refined = PromptRefiner.refine(original_prompt, ctx, answers, promptId);
-            const gain = PromptRefiner.calculateGain(original_prompt, refined, ctx);
+            const approvedTemplates = await this.templateSelector.select({
+              repoId: this.repository.id,
+              prompt: original_prompt,
+            });
+            const refinementContext = { approvedTemplates };
+            const refined = PromptRefiner.refine(original_prompt, ctx, answers, promptId, refinementContext);
+            const gain = PromptRefiner.calculateGain(original_prompt, refined, ctx, refinementContext);
 
             this.eventStore.recordPrompt({
               id: promptId,
@@ -359,11 +507,11 @@ Output ONLY the JSON array. If no gaps, return [].`,
               raw_prompt: original_prompt,
               normalized_prompt: refined,
               intent: "refine",
-              repo_id: path.basename(this.rootPath)
+              repo_id: this.repository.id
             });
 
             CommandCenterDashboard.setLastRefinement(original_prompt, refined, this.rootPath, gain);
-            CommandCenterDashboard.log(`Refinement Complete. Quality Gain: ${gain}%. Injected ${ctx.learnedPatterns?.length || 0} Mandates.`);
+            CommandCenterDashboard.log(`Refinement Complete. Quality Gain: ${gain}%. Injected ${ctx.learnedPatterns?.length || 0} mandates and ${approvedTemplates.length} approved templates.`);
 
             return { content: [{ type: "text", text: refined }] };
           }
@@ -381,7 +529,7 @@ Output ONLY the JSON array. If no gaps, return [].`,
             }
 
             try {
-              const proposals = JSON.parse(responseText);
+              const proposals = parseStructuredResponse<Array<{ id: string; category: string; description: string }>>(responseText);
               for (const p of proposals) {
                 LocalBrain.savePattern({ ...p, isProposed: true }, this.rootPath);
               }
@@ -397,6 +545,28 @@ Output ONLY the JSON array. If no gaps, return [].`,
             LocalBrain.approvePattern(id, this.rootPath);
             CommandCenterDashboard.log(`Rule Approved: ${id}`);
             return { content: [{ type: "text", text: "Rule '" + id + "' promoted!" }] };
+          }
+          case "list_learning_candidates": {
+            const candidates = this.eventStore.getLearningCandidates(this.repository.id);
+            return { content: [{ type: "text", text: JSON.stringify(candidates) }] };
+          }
+          case "review_lesson": {
+            const { id, approved } = z.object({ id: z.string(), approved: z.boolean() }).parse(request.params.arguments);
+            const changed = this.eventStore.reviewLesson(this.repository.id, id, approved);
+            if (!changed) {
+              throw new McpError(ErrorCode.InvalidParams, `Pending lesson not found: ${id}`);
+            }
+            CommandCenterDashboard.log(`Lesson ${approved ? "approved" : "rejected"}: ${id}`);
+            return { content: [{ type: "text", text: `Lesson ${id} ${approved ? "approved" : "rejected"}.` }] };
+          }
+          case "review_template": {
+            const { id, approved } = z.object({ id: z.string(), approved: z.boolean() }).parse(request.params.arguments);
+            const changed = this.eventStore.reviewTemplate(this.repository.id, id, approved);
+            if (!changed) {
+              throw new McpError(ErrorCode.InvalidParams, `Pending template not found: ${id}`);
+            }
+            CommandCenterDashboard.log(`Template ${approved ? "approved" : "rejected"}: ${id}`);
+            return { content: [{ type: "text", text: `Template ${id} ${approved ? "approved" : "rejected"}.` }] };
           }
           case "ingest_pattern": {
             const args = z.object({
@@ -473,17 +643,18 @@ Output ONLY the JSON array. If no gaps, return [].`,
           }
           case "generate_templates": {
             CommandCenterDashboard.log(`Executing Autonomous Template Synthesis...`);
-            const repoId = path.basename(this.rootPath);
+            const repoId = this.repository.id;
             const generator = new TemplateGenerator(this.requestModelText.bind(this));
             await generator.generateNewTemplates(repoId);
             CommandCenterDashboard.log(`Template Synthesis complete.`);
             return { content: [{ type: "text", text: "Successfully completed template generation cycle." }] };
           }
           case "record_agent_output": {
-            const { prompt_id, output_summary, artifacts_json } = z.object({
+            const { prompt_id, output_summary, artifacts_json, status } = z.object({
               prompt_id: z.string(),
               output_summary: z.string(),
-              artifacts_json: z.string().optional()
+              artifacts_json: z.string().optional(),
+              status: z.enum(["completed", "failed"]).optional()
             }).parse(request.params.arguments);
 
             CommandCenterDashboard.log(`Recording agent output for prompt ${prompt_id.substring(0, 10)}...`);
@@ -498,7 +669,7 @@ Output ONLY the JSON array. If no gaps, return [].`,
                 prompt_id: prompt_id,
                 workflow_name: "external-agent",
                 executor_name: agentName,
-                status: "completed",
+                status: status || "completed",
                 started_at: now,
                 ended_at: now,
                 result_summary: output_summary,
@@ -507,7 +678,7 @@ Output ONLY the JSON array. If no gaps, return [].`,
             } else {
               this.eventStore.updateExecution({
                 id: execution.id,
-                status: "completed",
+                status: status || "completed",
                 ended_at: now,
                 result_summary: output_summary,
                 artifacts_json: artifacts_json || execution.artifacts_json
@@ -515,6 +686,36 @@ Output ONLY the JSON array. If no gaps, return [].`,
             }
 
             return { content: [{ type: "text", text: `Successfully recorded output for prompt ${prompt_id}.` }] };
+          }
+          case "evaluate_prompt": {
+            const { prompt, baseline_prompt } = z.object({
+              prompt: z.string(),
+              baseline_prompt: z.string().optional(),
+            }).parse(request.params.arguments);
+            const evaluation = baseline_prompt ? evaluatePrompt(prompt, baseline_prompt) : evaluatePrompt(prompt);
+            return { content: [{ type: "text", text: JSON.stringify(evaluation) }] };
+          }
+          case "compare_prompt_variants": {
+            const outcomeSchema = z.object({
+              status: z.enum(["completed", "failed", "cancelled"]),
+              testsPassed: z.number().nonnegative().optional(),
+              testsFailed: z.number().nonnegative().optional(),
+              reworkCount: z.number().nonnegative().optional(),
+            });
+            const { baseline_prompt, variant_a, variant_b, outcome_a, outcome_b } = z.object({
+              baseline_prompt: z.string(),
+              variant_a: z.string(),
+              variant_b: z.string(),
+              outcome_a: outcomeSchema.optional(),
+              outcome_b: outcomeSchema.optional(),
+            }).parse(request.params.arguments);
+            const experiment = createABEvaluationRecord({
+              experimentId: `exp_${Date.now()}`,
+              baselinePrompt: baseline_prompt,
+              variantA: { id: "A", prompt: variant_a, observedOutcome: outcome_a },
+              variantB: { id: "B", prompt: variant_b, observedOutcome: outcome_b },
+            });
+            return { content: [{ type: "text", text: JSON.stringify(experiment) }] };
           }
           default:
             throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${request.params.name}`);
@@ -536,7 +737,8 @@ Output ONLY the JSON array. If no gaps, return [].`,
     // Start Background Autonomy
     this.backgroundAutonomy = new BackgroundAutonomyService(
       this.rootPath,
-      this.requestModelText.bind(this)
+      this.requestModelText.bind(this),
+      30_000, // AUTO-03: poll git every 30s
     );
     this.backgroundAutonomy.start();
 

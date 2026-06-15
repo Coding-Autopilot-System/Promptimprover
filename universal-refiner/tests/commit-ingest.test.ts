@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { CommitIngester } from "../src/history/commit-ingest.js";
 import { EventStore } from "../src/history/event-store.js";
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 
 vi.mock("child_process", () => ({
-  execSync: vi.fn()
+  execFileSync: vi.fn()
 }));
 
 describe("CommitIngester", () => {
@@ -35,10 +35,10 @@ describe("CommitIngester", () => {
     const mockFiles = "file1.ts\nfile2.ts";
     const mockStats = " 2 files changed, 15 insertions(+), 5 deletions(-)";
     
-    (execSync as any).mockImplementation((cmd: string) => {
-      if (cmd.includes("git log")) return mockLog;
-      if (cmd.includes("git show --shortstat")) return mockStats;
-      if (cmd.includes("git show --name-only")) return mockFiles;
+    (execFileSync as any).mockImplementation((_file: string, args: string[]) => {
+      if (args.includes("log")) return mockLog;
+      if (args.includes("--shortstat")) return mockStats;
+      if (args.includes("--name-only")) return mockFiles;
       return "";
     });
 
@@ -59,5 +59,80 @@ describe("CommitIngester", () => {
     const stats = JSON.parse(row.diff_stats_json);
     expect(stats.insertions).toBe(15);
     expect(stats.deletions).toBe(5);
+  });
+
+  it("fails quietly and returns zero for a non-git directory", async () => {
+    const gitError = new Error("not a git repository");
+    (execFileSync as any).mockImplementation(() => {
+      throw gitError;
+    });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const ingester = new CommitIngester();
+    const count = await ingester.ingest(testDir, 1);
+
+    expect(count).toBe(0);
+    expect(execFileSync).toHaveBeenCalledWith(
+      "git",
+      ["log", "-n", "1", "--pretty=format:%H|%an|%ai|%s"],
+      expect.objectContaining({
+        cwd: testDir,
+        stdio: ["ignore", "pipe", "pipe"],
+      }),
+    );
+    expect(errorSpy).toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
+
+  it("uses the static default limit and ignores an empty git log", async () => {
+    (execFileSync as any).mockReturnValue("");
+
+    await expect(CommitIngester.ingestLatest("C:/repo/empty")).resolves.toBe(0);
+    expect(execFileSync).toHaveBeenCalledWith(
+      "git",
+      ["log", "-n", "10", "--pretty=format:%H|%an|%ai|%s"],
+      expect.any(Object),
+    );
+  });
+
+  it("falls back when the stored SHA is unavailable and tolerates incomplete stats", async () => {
+    const store = EventStore.getInstance();
+    const identity = store.ensureRepository("C:/repo/rebased");
+    store.recordCommit({
+      id: "old",
+      repo_id: identity.id,
+      sha: "old-sha",
+      author: "author",
+      message: "old",
+      committed_at: "2026-01-01T00:00:00Z",
+    });
+
+    (execFileSync as any).mockImplementation((_file: string, args: string[]) => {
+      if (args[0] === "log" && args[1] === "old-sha..HEAD") {
+        throw new Error("unknown revision");
+      }
+      if (args[0] === "log") {
+        return "\nsha-new|author|2026-01-02T00:00:00Z|new\nsha-statless|author|2026-01-03T00:00:00Z|statless";
+      }
+      if (args.includes("--name-only")) {
+        return "\nsrc/new.ts\n";
+      }
+      if (args.includes("--shortstat") && args.at(-1) === "sha-statless") {
+        throw new Error("shortstat unavailable");
+      }
+      if (args.includes("--shortstat")) {
+        return " 1 file changed";
+      }
+      return "";
+    });
+
+    await expect(new CommitIngester().ingest("C:/repo/rebased", 2)).resolves.toBe(2);
+
+    const rows = (store as any).db.prepare("SELECT sha, diff_stats_json FROM commits WHERE repo_id = ? ORDER BY sha").all(identity.id);
+    expect(rows).toMatchObject([
+      { sha: "old-sha" },
+      { sha: "sha-new", diff_stats_json: JSON.stringify({ insertions: 0, deletions: 0 }) },
+      { sha: "sha-statless", diff_stats_json: JSON.stringify({ insertions: 0, deletions: 0 }) },
+    ]);
   });
 });

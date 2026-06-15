@@ -8,6 +8,7 @@ import { fileURLToPath } from "url";
 import { streamSSE } from "hono/streaming";
 import { getDisplayVersion } from "./version.js";
 import { RuntimeLogger } from "./logger.js";
+import { ConfigManager } from "./config.js";
 
 import { TimelineProvider } from "../history/timeline.js";
 import { EventStore } from "../history/event-store.js";
@@ -28,6 +29,44 @@ interface DashboardState {
   stack: string;
   framework: string;
   pattern: string;
+}
+
+interface SemanticEventDetails {
+  taskName?: unknown;
+  provider?: unknown;
+  model?: unknown;
+  latencyMs?: unknown;
+  fallbackFrom?: unknown;
+}
+
+interface SemanticEventRow {
+  timestamp: string;
+  details_json: string;
+}
+
+function safeString(value: unknown, maxLength = 120): string | null {
+  return typeof value === "string" && value.length > 0 ? value.slice(0, maxLength) : null;
+}
+
+function sanitizeEndpoint(rawUrl: string): string {
+  try {
+    const url = new URL(rawUrl);
+    return `${url.protocol}//${url.hostname}${url.port ? `:${url.port}` : ""}`;
+  } catch {
+    return "invalid";
+  }
+}
+
+export function isSameOriginRequest(origin: string | undefined, requestUrl: string): boolean {
+  if (!origin) {
+    return true;
+  }
+
+  try {
+    return new URL(origin).origin === new URL(requestUrl).origin;
+  } catch {
+    return false;
+  }
 }
 
 export class CommandCenterDashboard {
@@ -88,7 +127,102 @@ export class CommandCenterDashboard {
     };
   }
 
-  static start(port = 3000, defaultPath = ".") {
+  private static buildHealth(selectedPath: string) {
+    const repoId = EventStore.getInstance().ensureRepository(selectedPath).id;
+    const config = ConfigManager.getSemanticConfig(selectedPath);
+    const db = (EventStore.getInstance() as any).db;
+    const rows = db.prepare(`
+      SELECT timestamp, details_json
+      FROM events
+      WHERE repo_id = ? AND event_type = 'semantic_request_completed'
+      ORDER BY timestamp DESC
+      LIMIT 100
+    `).all(repoId) as SemanticEventRow[];
+
+    const events = rows.map(row => {
+      let details: SemanticEventDetails = {};
+      try {
+        details = JSON.parse(row.details_json) as SemanticEventDetails;
+      } catch {
+        // Malformed historical telemetry is ignored rather than exposed.
+      }
+      return {
+        timestamp: row.timestamp,
+        taskName: safeString(details.taskName),
+        provider: safeString(details.provider) || "unknown",
+        model: safeString(details.model) || "unknown",
+        latencyMs: typeof details.latencyMs === "number" && Number.isFinite(details.latencyMs)
+          ? Math.max(0, Math.round(details.latencyMs))
+          : null,
+        fallbackFrom: Array.isArray(details.fallbackFrom)
+          ? details.fallbackFrom.map(item => safeString(item, 80)).filter((item): item is string => item !== null).slice(0, 10)
+          : [],
+      };
+    });
+
+    const providerMetrics = new Map<string, {
+      completions: number;
+      latencyTotal: number;
+      latencyCount: number;
+      lastSuccessAt: string;
+      models: Set<string>;
+    }>();
+    for (const event of events) {
+      const metric = providerMetrics.get(event.provider) || {
+        completions: 0,
+        latencyTotal: 0,
+        latencyCount: 0,
+        lastSuccessAt: event.timestamp,
+        models: new Set<string>(),
+      };
+      metric.completions += 1;
+      if (event.latencyMs !== null) {
+        metric.latencyTotal += event.latencyMs;
+        metric.latencyCount += 1;
+      }
+      metric.models.add(event.model);
+      providerMetrics.set(event.provider, metric);
+    }
+
+    const totalLatency = events.reduce((sum, event) => sum + (event.latencyMs || 0), 0);
+    const latencyCount = events.filter(event => event.latencyMs !== null).length;
+    const semanticEnabled = config.localEnabled || config.mcpSamplingEnabled;
+
+    return {
+      runtime: {
+        status: "online",
+        uptimeSeconds: Math.floor(process.uptime()),
+        nodeVersion: process.version,
+        checkedAt: new Date().toISOString(),
+      },
+      semantic: {
+        status: !semanticEnabled ? "disabled" : events.length > 0 ? "healthy" : "configured",
+        local: {
+          enabled: config.localEnabled,
+          endpoint: sanitizeEndpoint(config.baseUrl),
+          models: config.models,
+          timeoutMs: config.timeoutMs,
+          allowNonLoopback: config.allowNonLoopback,
+        },
+        mcpSampling: { enabled: config.mcpSamplingEnabled },
+        totals: {
+          completed: events.length,
+          averageLatencyMs: latencyCount > 0 ? Math.round(totalLatency / latencyCount) : null,
+          fallbackCompletions: events.filter(event => event.fallbackFrom.length > 0).length,
+        },
+        lastSuccess: events[0] || null,
+        providers: [...providerMetrics.entries()].map(([provider, metric]) => ({
+          provider,
+          completions: metric.completions,
+          averageLatencyMs: metric.latencyCount > 0 ? Math.round(metric.latencyTotal / metric.latencyCount) : null,
+          lastSuccessAt: metric.lastSuccessAt,
+          models: [...metric.models],
+        })),
+      },
+    };
+  }
+
+  static createApp(defaultPath = ".") {
     this.rootPath = defaultPath;
     const app = new Hono();
 
@@ -116,8 +250,9 @@ export class CommandCenterDashboard {
 
     app.get("/api/commits", async (c) => {
       try {
-        const repoId = path.basename(this.resolveSelectedPath(c.req.query("project")));
-        const db = (EventStore.getInstance() as any).db;
+        const store = EventStore.getInstance();
+        const repoId = store.ensureRepository(this.resolveSelectedPath(c.req.query("project"))).id;
+        const db = (store as any).db;
         const commits = db.prepare(`
           SELECT c.*, e.prompt_id, e.id as execution_id
           FROM commits c
@@ -135,8 +270,9 @@ export class CommandCenterDashboard {
 
     app.get("/api/lessons", async (c) => {
       try {
-        const repoId = path.basename(this.resolveSelectedPath(c.req.query("project")));
-        const db = (EventStore.getInstance() as any).db;
+        const store = EventStore.getInstance();
+        const repoId = store.ensureRepository(this.resolveSelectedPath(c.req.query("project"))).id;
+        const db = (store as any).db;
         const lessons = db.prepare("SELECT * FROM lessons WHERE repo_id = ? ORDER BY created_at DESC").all(repoId);
         return c.json(lessons);
       } catch (error) {
@@ -147,13 +283,78 @@ export class CommandCenterDashboard {
 
     app.get("/api/templates", async (c) => {
       try {
-        const repoId = path.basename(this.resolveSelectedPath(c.req.query("project")));
-        const db = (EventStore.getInstance() as any).db;
+        const store = EventStore.getInstance();
+        const repoId = store.ensureRepository(this.resolveSelectedPath(c.req.query("project"))).id;
+        const db = (store as any).db;
         const templates = db.prepare("SELECT * FROM prompt_templates WHERE repo_id = ? ORDER BY success_score DESC").all(repoId);
         return c.json(templates);
       } catch (error) {
         this.logRouteError("api/templates", error);
         return c.json({ error: "Templates unavailable" }, 500);
+      }
+    });
+
+    app.post("/api/review/:kind/:id", async (c) => {
+      const selectedPath = this.resolveSelectedPath(c.req.query("project"));
+      try {
+        if (!isSameOriginRequest(c.req.header("origin"), c.req.url)) {
+          return c.json({ error: "Cross-origin review requests are not allowed" }, 403);
+        }
+        if (!c.req.header("content-type")?.toLowerCase().startsWith("application/json")) {
+          return c.json({ error: "Review requests must use application/json" }, 415);
+        }
+
+        const kind = c.req.param("kind");
+        if (kind !== "lesson" && kind !== "template") {
+          return c.json({ error: "Unsupported review candidate type" }, 400);
+        }
+
+        let body: { decision?: unknown };
+        try {
+          body = await c.req.json() as { decision?: unknown };
+        } catch {
+          return c.json({ error: "Review request body must be valid JSON" }, 400);
+        }
+        if (body.decision !== "approve" && body.decision !== "reject") {
+          return c.json({ error: "Decision must be approve or reject" }, 400);
+        }
+
+        const id = c.req.param("id");
+        if (!id || id.length > 200) {
+          return c.json({ error: "Review candidate ID is invalid" }, 400);
+        }
+        const store = EventStore.getInstance();
+        const repoId = store.ensureRepository(selectedPath).id;
+        const approved = body.decision === "approve";
+        const changed = kind === "lesson"
+          ? store.reviewLesson(repoId, id, approved)
+          : store.reviewTemplate(repoId, id, approved);
+        if (!changed) {
+          return c.json({ error: `Pending ${kind} not found for selected repository` }, 404);
+        }
+
+        store.recordEvent({
+          id: `evt_dashboard_review_${Date.now()}_${Math.floor(Math.random() * 100000)}`,
+          event_type: `${kind}_reviewed`,
+          repo_id: repoId,
+          summary: `${kind === "lesson" ? "Lesson" : "Template"} ${approved ? "approved" : "rejected"} from dashboard`,
+          details_json: JSON.stringify({ candidateId: id, decision: body.decision }),
+        });
+        this.log(`${kind === "lesson" ? "Lesson" : "Template"} ${approved ? "approved" : "rejected"}: ${id}`, selectedPath);
+        return c.json({ id, kind, decision: body.decision, repoId });
+      } catch (error) {
+        this.logRouteError("api/review", error, selectedPath);
+        return c.json({ error: "Review request failed" }, 500);
+      }
+    });
+
+    app.get("/api/health", async (c) => {
+      const selectedPath = this.resolveSelectedPath(c.req.query("project"));
+      try {
+        return c.json(this.buildHealth(selectedPath));
+      } catch (error) {
+        this.logRouteError("api/health", error, selectedPath);
+        return c.json({ error: "Provider health unavailable" }, 500);
       }
     });
 
@@ -228,6 +429,11 @@ export class CommandCenterDashboard {
       }
     });
 
+    return app;
+  }
+
+  static start(port = 3000, defaultPath = ".") {
+    const app = this.createApp(defaultPath);
     try {
       const server = serve({ fetch: app.fetch, port, hostname: resolveDashboardHost() });
       server.on("error", (e: any) => {
