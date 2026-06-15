@@ -1,62 +1,71 @@
 {
-    "name":  "gemini-prompt-refiner",
-    "version":  "8.0.0",
-    "description":  "Cross-CLI prompt refinement using an MCP server.",
-    "main":  "dist/src/index.js",
-    "bin":  {
-                "gemini-prompt-refiner":  "./dist/src/index.js",
-                "promptimprover-hook-pre": "./dist/hooks/pre-prompt.js",
-                "promptimprover-hook-post": "./dist/hooks/post-execution.js"
-            },
-    "scripts":  {
-                    "prebuild":  "node scripts/sync-version.mjs && node scripts/clean-dist.mjs",
-                    "build":  "tsc \u0026\u0026 node scripts/copy-dashboard.mjs",
-                    "start":  "node dist/src/index.js",
-                    "dev":  "ts-node src/index.ts",
-                    "pretest":  "node scripts/sync-version.mjs",
-                    "test":  "vitest run",
-                    "test:acceptance":  "vitest run tests/acceptance",
-                    "test:stress":  "vitest run tests/stress",
-                    "acceptance:semantic":  "node scripts/acceptance/semantic-provider-acceptance.mjs",
-                    "stress:event-store":  "node scripts/stress/event-store-stress.mjs"
-                },
-    "keywords":  [
-                     "mcp",
-                     "mcp-server",
-                     "gemini",
-                     "prompt-refinement"
-                 ],
-    "author":  "Kim Harjamaki",
-    "license":  "MIT",
-    "type":  "module",
-    "dependencies":  {
-                         "@modelcontextprotocol/sdk":  "^1.29.0",
-                         "better-sqlite3":  "^12.8.0",
-                         "chokidar":  "^5.0.0",
-                         "flexsearch":  "^0.7.43",
-                         "zod":  "^4.3.6"
-                     },
-    "devDependencies":  {
-                            "@types/better-sqlite3":  "^7.6.13",
-                            "@types/node":  "^22.19.17",
-                            "ts-node":  "^10.9.2",
-                            "typescript":  "^5.9.3",
-                            "vitest":  "^4.1.4"
-                        },
-    "repository":  {
-                       "type":  "git",
-                       "url":  "git+https://github.com/Coding-Autopilot-System/Promptimprover.git",
-                       "directory":  "universal-refiner"
-                   },
-    "homepage":  "https://github.com/Coding-Autopilot-System/Promptimprover#readme",
-    "bugs":  {
-                 "url":  "https://github.com/Coding-Autopilot-System/Promptimprover/issues"
-             },
-    "engines":  {
-                    "node":  "\u003e=22"
-                },
-    "files":  [
-                  "dist/",
-                  "hooks/config/"
-              ]
+    "name": "gemini-prompt-refiner",
+    "version": "8.0.0",
+    "description": "Cross-CLI prompt refinement using an MCP server.",
+    "main": "dist/src/index.js",
+    "bin": {
+        "gemini-prompt-refiner": "./dist/src/index.js",
+        "promptimprover-hook-pre": "./dist/hooks/pre-prompt.js",
+        "promptimprover-hook-post": "./dist/hooks/post-execution.js"
+    },
+    "scripts": {
+        "prebuild": "node scripts/sync-version.mjs && node scripts/clean-dist.mjs",
+        "build": "tsc && node scripts/copy-dashboard.mjs",
+        "start": "node dist/src/index.js",
+        "dev": "ts-node src/index.ts",
+        "pretest": "node scripts/sync-version.mjs",
+        "test": "vitest run",
+        "test:coverage": "vitest run --coverage",
+        "test:acceptance": "vitest run tests/acceptance",
+        "test:stress": "vitest run tests/stress",
+        "security:secrets": "node scripts/security/scan-secrets.mjs",
+        "security:audit": "npm audit --omit=dev --audit-level=high",
+        "package:check": "npm pack --dry-run",
+        "db:backup": "node scripts/operations/event-store-recovery.mjs backup",
+        "db:restore": "node scripts/operations/event-store-recovery.mjs restore",
+        "acceptance:semantic": "node scripts/acceptance/semantic-provider-acceptance.mjs",
+        "stress:event-store": "node scripts/stress/event-store-stress.mjs",
+        "release:verify": "npm run build && npm run test:coverage && npm run test:acceptance && npm run acceptance:semantic && npm run test:stress && npm run stress:event-store && npm run security:audit && npm run security:secrets && npm run package:check"
+    },
+    "keywords": [
+        "mcp",
+        "mcp-server",
+        "gemini",
+        "prompt-refinement"
+    ],
+    "author": "Kim Harjamaki",
+    "license": "MIT",
+    "type": "module",
+    "dependencies": {
+        "@modelcontextprotocol/sdk": "^1.29.0",
+        "better-sqlite3": "^12.8.0",
+        "chokidar": "^5.0.0",
+        "flexsearch": "^0.7.43",
+        "zod": "^4.3.6"
+    },
+    "devDependencies": {
+        "@types/better-sqlite3": "^7.6.13",
+        "@types/node": "^22.19.17",
+        "@vitest/coverage-v8": "4.1.4",
+        "ts-node": "^10.9.2",
+        "typescript": "^5.9.3",
+        "vitest": "^4.1.4"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/Coding-Autopilot-System/Promptimprover.git",
+        "directory": "universal-refiner"
+    },
+    "homepage": "https://github.com/Coding-Autopilot-System/Promptimprover#readme",
+    "bugs": {
+        "url": "https://github.com/Coding-Autopilot-System/Promptimprover/issues"
+    },
+    "engines": {
+        "node": ">=22"
+    },
+    "files": [
+        "dist/",
+        "hooks/config/",
+        "scripts/operations/"
+    ]
 }

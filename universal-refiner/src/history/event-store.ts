@@ -450,6 +450,46 @@ export class EventStore {
     };
   }
 
+  async backup(destinationPath: string): Promise<string> {
+    this.ensureDirectory(path.dirname(destinationPath));
+    await this.db.backup(destinationPath);
+
+    const backup = new Database(destinationPath, { readonly: true });
+    try {
+      const result = backup.pragma("integrity_check", { simple: true });
+      if (result !== "ok") {
+        throw new Error(`Backup integrity check failed: ${String(result)}`);
+      }
+    } finally {
+      backup.close();
+    }
+
+    return destinationPath;
+  }
+
+  static restore(backupPath: string): EventStore {
+    if (!fs.existsSync(backupPath)) {
+      throw new Error(`Backup does not exist: ${backupPath}`);
+    }
+
+    const backup = new Database(backupPath, { readonly: true });
+    try {
+      const result = backup.pragma("integrity_check", { simple: true });
+      if (result !== "ok") {
+        throw new Error(`Backup integrity check failed: ${String(result)}`);
+      }
+    } finally {
+      backup.close();
+    }
+
+    const dbPath = this.resolveDatabasePath();
+    this.instance?.close();
+    this.instance = null;
+    fs.copyFileSync(backupPath, dbPath);
+    this.instance = new EventStore(dbPath);
+    return this.instance;
+  }
+
   reviewLesson(repoId: string, id: string, approved: boolean): boolean {
     const result = this.db.prepare(`
       UPDATE lessons SET approved = ?, updated_at = ? WHERE repo_id = ? AND id = ? AND approved = 0

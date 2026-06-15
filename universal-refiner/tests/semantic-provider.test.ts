@@ -1,10 +1,11 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createServer, Server } from "node:http";
 import { AddressInfo } from "node:net";
 import {
   LocalOpenAiProvider,
   SemanticProvider,
   SemanticProviderChain,
+  McpSamplingProvider,
 } from "../src/core/semantic-provider.js";
 
 describe("semantic providers", () => {
@@ -83,5 +84,45 @@ describe("semantic providers", () => {
 
     const chain = new SemanticProviderChain([unavailable, available]);
     await expect(chain.requestText({ taskName: "test", prompt: "hello", maxTokens: 10 })).resolves.toBe("ready");
+  });
+
+  it("rejects malformed local responses and exhausts configured models", async () => {
+    server = createServer((_request, response) => {
+      response.setHeader("content-type", "application/json");
+      response.end(JSON.stringify({ choices: [{ message: { content: " " } }] }));
+    });
+    await new Promise<void>(resolve => server?.listen(0, "127.0.0.1", resolve));
+    const port = (server.address() as AddressInfo).port;
+    const provider = new LocalOpenAiProvider({
+      baseUrl: `http://127.0.0.1:${port}/v1/`,
+      models: ["bad"],
+      timeoutMs: 1000,
+      temperature: 0,
+      allowNonLoopback: false,
+    });
+
+    await expect(provider.requestText({ taskName: "malformed", prompt: "hello", maxTokens: 10 })).resolves.toBeNull();
+  });
+
+  it("supports MCP sampling and records provider-chain telemetry", async () => {
+    const onSuccess = vi.fn();
+    const sampling = new McpSamplingProvider(async () => "sampled");
+    const chain = new SemanticProviderChain([
+      { name: "offline", requestText: async () => null },
+      sampling,
+    ], onSuccess);
+    const request = { taskName: "sample", prompt: "hello", maxTokens: 10 };
+
+    await expect(chain.requestText(request)).resolves.toBe("sampled");
+    expect(onSuccess).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: "mcp-sampling", fallbackFrom: ["provider:offline"] }),
+      request,
+    );
+  });
+
+  it("returns null when MCP sampling and every provider are unavailable", async () => {
+    const sampling = new McpSamplingProvider(async () => null);
+    const chain = new SemanticProviderChain([sampling]);
+    await expect(chain.requestText({ taskName: "offline", prompt: "hello", maxTokens: 10 })).resolves.toBeNull();
   });
 });

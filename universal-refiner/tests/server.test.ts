@@ -5,13 +5,19 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
+const lifecycle = vi.hoisted(() => ({
+  connect: vi.fn(),
+  createMessage: vi.fn(),
+  backgroundStart: vi.fn(),
+}));
+
 // Mock MCP SDK
 vi.mock("@modelcontextprotocol/sdk/server/index.js", () => {
   return {
     Server: class {
       setRequestHandler = vi.fn();
-      connect = vi.fn();
-      createMessage = vi.fn().mockResolvedValue({ content: { type: "text", text: "[]" } });
+      connect = lifecycle.connect;
+      createMessage = lifecycle.createMessage;
     }
   };
 });
@@ -21,6 +27,11 @@ vi.mock("@modelcontextprotocol/sdk/server/stdio.js", () => {
     StdioServerTransport: vi.fn(),
   };
 });
+vi.mock("../src/core/background-service.js", () => ({
+  BackgroundAutonomyService: class {
+    start = lifecycle.backgroundStart;
+  },
+}));
 
 describe("PromptRefinerServer", () => {
   let server: PromptRefinerServer;
@@ -28,6 +39,8 @@ describe("PromptRefinerServer", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    lifecycle.connect.mockResolvedValue(undefined);
+    lifecycle.createMessage.mockResolvedValue({ content: { type: "text", text: "[]" } });
     testDir = fs.mkdtempSync(path.join(os.tmpdir(), "server-test-"));
     process.env.PROMPT_REFINER_GLOBAL_DIR = testDir;
     (EventStore as any).instance = null;
@@ -54,5 +67,44 @@ describe("PromptRefinerServer", () => {
     // Check for some of the ListTools schema or specific tool names if we could
     // Since we mock the schema, we can check how many times it was called
     expect(mockServerInstance.setRequestHandler).toHaveBeenCalledTimes(2); // One for ListTools, one for CallTool
+  });
+
+  it("connects transport and starts background autonomy", async () => {
+    await server.run();
+    expect(lifecycle.connect).toHaveBeenCalledOnce();
+    expect(lifecycle.backgroundStart).toHaveBeenCalledOnce();
+  });
+
+  it("handles MCP sampling text, non-text, unsupported, and transient failures", async () => {
+    lifecycle.createMessage
+      .mockResolvedValueOnce({ content: { type: "text", text: "sampled" } })
+      .mockResolvedValueOnce({ content: { type: "image", data: "x", mimeType: "image/png" } })
+      .mockRejectedValueOnce(new Error("Method not found"))
+      .mockRejectedValueOnce(new Error("transient"));
+
+    await expect((server as any).requestMcpSamplingText("prompt", 20)).resolves.toBe("sampled");
+    await expect((server as any).requestMcpSamplingText("prompt", 20)).resolves.toBeNull();
+    await expect((server as any).requestMcpSamplingText("prompt", 20)).resolves.toBeNull();
+    expect(lifecycle.createMessage).toHaveBeenCalledTimes(3);
+    await expect((server as any).requestMcpSamplingText("prompt", 20)).resolves.toBeNull();
+    expect(lifecycle.createMessage).toHaveBeenCalledTimes(3);
+
+    const transientServer = new PromptRefinerServer(".");
+    await expect((transientServer as any).requestMcpSamplingText("prompt", 20)).resolves.toBeNull();
+  });
+
+  it("records semantic success telemetry and resolves agent names", () => {
+    (server as any).recordSemanticSuccess({
+      text: "ok",
+      provider: "local",
+      model: "gemma",
+      latencyMs: 10,
+      promptTokens: 4,
+      completionTokens: 2,
+    }, { taskName: "test" });
+    const db = (EventStore.getInstance() as any).db;
+    expect(db.prepare("SELECT * FROM events WHERE event_type = ?").get("semantic_request_completed")).toBeDefined();
+    expect((server as any).getAgentName({ params: { _meta: { agentName: "agent" } } })).toBe("agent");
+    expect((server as any).getAgentName({ params: {} })).toBe("User CLI");
   });
 });

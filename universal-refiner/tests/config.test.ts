@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
@@ -59,5 +59,37 @@ describe("ConfigManager", () => {
     expect(config.timeoutMs).toBe(120000);
     expect(config.temperature).toBe(0.2);
     expect(config.baseUrl).toBe("http://localhost:9000/v1");
+  });
+
+  it("returns an empty config and reports invalid JSON", () => {
+    fs.writeFileSync(path.join(tmpDir, ".gemini-refiner.json"), "{");
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    expect(ConfigManager.loadConfig(tmpDir)).toEqual({});
+    expect(error).toHaveBeenCalled();
+  });
+
+  it("accepts all bounded semantic overrides", () => {
+    fs.writeFileSync(path.join(tmpDir, ".gemini-refiner.json"), JSON.stringify({
+      semantic: {
+        localEnabled: false,
+        mcpSamplingEnabled: false,
+        baseUrl: " http://127.0.0.1:1234/v1 ",
+        models: [" primary ", " fallback "],
+        timeoutMs: 1,
+        temperature: 2,
+        allowNonLoopback: true,
+      },
+    }));
+
+    expect(ConfigManager.getSemanticConfig(tmpDir)).toEqual({
+      localEnabled: false,
+      mcpSamplingEnabled: false,
+      baseUrl: "http://127.0.0.1:1234/v1",
+      models: ["primary", "fallback"],
+      timeoutMs: 1,
+      temperature: 2,
+      allowNonLoopback: true,
+    });
   });
 });

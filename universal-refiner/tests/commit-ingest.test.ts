@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { CommitIngester } from "../src/history/commit-ingest.js";
 import { EventStore } from "../src/history/event-store.js";
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 
 vi.mock("child_process", () => ({
-  execSync: vi.fn()
+  execFileSync: vi.fn()
 }));
 
 describe("CommitIngester", () => {
@@ -35,10 +35,10 @@ describe("CommitIngester", () => {
     const mockFiles = "file1.ts\nfile2.ts";
     const mockStats = " 2 files changed, 15 insertions(+), 5 deletions(-)";
     
-    (execSync as any).mockImplementation((cmd: string) => {
-      if (cmd.includes("git log")) return mockLog;
-      if (cmd.includes("git show --shortstat")) return mockStats;
-      if (cmd.includes("git show --name-only")) return mockFiles;
+    (execFileSync as any).mockImplementation((_file: string, args: string[]) => {
+      if (args.includes("log")) return mockLog;
+      if (args.includes("--shortstat")) return mockStats;
+      if (args.includes("--name-only")) return mockFiles;
       return "";
     });
 
@@ -59,5 +59,28 @@ describe("CommitIngester", () => {
     const stats = JSON.parse(row.diff_stats_json);
     expect(stats.insertions).toBe(15);
     expect(stats.deletions).toBe(5);
+  });
+
+  it("fails quietly and returns zero for a non-git directory", async () => {
+    const gitError = new Error("not a git repository");
+    (execFileSync as any).mockImplementation(() => {
+      throw gitError;
+    });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const ingester = new CommitIngester();
+    const count = await ingester.ingest(testDir, 1);
+
+    expect(count).toBe(0);
+    expect(execFileSync).toHaveBeenCalledWith(
+      "git",
+      ["log", "-n", "1", "--pretty=format:%H|%an|%ai|%s"],
+      expect.objectContaining({
+        cwd: testDir,
+        stdio: ["ignore", "pipe", "pipe"],
+      }),
+    );
+    expect(errorSpy).toHaveBeenCalled();
+    errorSpy.mockRestore();
   });
 });

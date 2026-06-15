@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { EventStore } from "../../src/history/event-store.js";
@@ -42,5 +42,24 @@ describe("EventStore stress and restart persistence", () => {
     const restarted = EventStore.getInstance();
     const db = (restarted as unknown as { db: { prepare: (sql: string) => { get: (id: string) => unknown } } }).db;
     expect(db.prepare("SELECT id FROM events WHERE id = ?").get("before-restart")).toEqual({ id: "before-restart" });
+  });
+
+  it("creates an integrity-checked backup and restores it", async () => {
+    const store = EventStore.getInstance();
+    const backupPath = join(directory, "backups", "events.db");
+    store.recordEvent({ id: "before-backup", event_type: "recovery", summary: "restore me" });
+
+    await expect(store.backup(backupPath)).resolves.toBe(backupPath);
+    expect(existsSync(backupPath)).toBe(true);
+    store.recordEvent({ id: "after-backup", event_type: "recovery", summary: "discard me" });
+
+    const restored = EventStore.restore(backupPath);
+    const db = (restored as unknown as { db: { prepare: (sql: string) => { get: (id: string) => unknown } } }).db;
+    expect(db.prepare("SELECT id FROM events WHERE id = ?").get("before-backup")).toEqual({ id: "before-backup" });
+    expect(db.prepare("SELECT id FROM events WHERE id = ?").get("after-backup")).toBeUndefined();
+  });
+
+  it("rejects a missing backup", () => {
+    expect(() => EventStore.restore(join(directory, "missing.db"))).toThrow(/Backup does not exist/);
   });
 });

@@ -16,7 +16,7 @@ export class BackgroundAutonomyService {
   private queue = new SerializedJobQueue();
 
   /**
-   * @param gitPollIntervalMs — pass a number (ms) to enable git polling (AUTO-03).
+   * @param gitPollIntervalMs Pass a number in milliseconds to enable git polling.
    *   Defaults to null (disabled) so tests that use vi.runAllTimersAsync() are not
    *   affected by an infinite setInterval.  The production server passes 30_000.
    */

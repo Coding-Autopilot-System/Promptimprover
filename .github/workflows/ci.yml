@@ -1,13 +1,18 @@
 name: CI
 
 on:
+  workflow_dispatch:
   push:
     branches: [ master, main ]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: universal-refiner
@@ -29,10 +34,11 @@ jobs:
         run: npm run build
 
       - name: Run tests
-        run: npm test
+        run: npm run test:coverage
 
   acceptance:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: universal-refiner
@@ -62,6 +68,7 @@ jobs:
 
   stress:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: universal-refiner
@@ -82,3 +89,61 @@ jobs:
           PROMPT_REFINER_STRESS_WORKERS: '4'
           PROMPT_REFINER_STRESS_WRITES: '100'
         run: npm run stress:event-store
+
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: universal-refiner
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: universal-refiner/package-lock.json
+      - run: npm ci --no-fund
+      - run: npm rebuild better-sqlite3
+      - run: npm run build
+      - run: npm run test:coverage
+      - run: npm run test:acceptance
+      - run: npm run test:stress
+
+  supply-chain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: universal-refiner
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: universal-refiner/package-lock.json
+      - run: npm ci --no-fund
+      - run: npm run security:audit
+      - run: npm run security:secrets
+      - run: npm run build
+      - run: npm run package:check
+
+  release-gate:
+    if: always()
+    needs: [build-and-test, acceptance, stress, windows, supply-chain]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every enterprise gate
+        env:
+          BUILD: ${{ needs['build-and-test'].result }}
+          ACCEPTANCE: ${{ needs.acceptance.result }}
+          STRESS: ${{ needs.stress.result }}
+          WINDOWS: ${{ needs.windows.result }}
+          SUPPLY_CHAIN: ${{ needs['supply-chain'].result }}
+        run: |
+          test "$BUILD" = "success"
+          test "$ACCEPTANCE" = "success"
+          test "$STRESS" = "success"
+          test "$WINDOWS" = "success"
+          test "$SUPPLY_CHAIN" = "success"

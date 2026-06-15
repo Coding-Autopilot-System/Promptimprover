@@ -105,7 +105,7 @@ describe("GitPoller", () => {
     expect(ingestLatest.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
 
-  it("start() is idempotent — calling twice does not double the interval", async () => {
+  it("start() is idempotent; calling twice does not double the interval", async () => {
     const poller = new GitPoller("/repo", 1000);
     poller.start();
     poller.start();

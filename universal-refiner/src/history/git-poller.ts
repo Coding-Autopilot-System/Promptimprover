@@ -25,7 +25,7 @@ export class GitPoller extends EventEmitter {
     this.intervalMs = intervalMs;
   }
 
-  /** Start polling. Idempotent — calling twice is a no-op. */
+  /** Start polling. Idempotent; calling twice is a no-op. */
   public start(): void {
     if (this.running) {
       return;

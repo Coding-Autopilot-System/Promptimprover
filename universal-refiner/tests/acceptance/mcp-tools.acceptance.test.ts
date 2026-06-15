@@ -83,4 +83,68 @@ describe("MCP all-tool acceptance", () => {
       interpretation: "observed-evidence",
     });
   });
+
+  it("executes every advertised dispatcher path with valid arguments", async () => {
+    handlers.length = 0;
+    const server = new PromptRefinerServer(directory);
+    (server as any).requestModelText = vi.fn(async (taskName: string) => {
+      if (taskName === "Rule discovery") return "[]";
+      if (taskName.startsWith("Prompt Optimization")) return "---REWRITTEN PROMPT---\nImproved prompt";
+      return "model response";
+    });
+    const list = await handlers[0]({}) as { tools: Array<{ name: string }> };
+    const dispatch = handlers[1] as (request: unknown) => Promise<{ content: Array<{ type: string; text: string }> }>;
+    const store = EventStore.getInstance();
+    const repoId = (server as any).repository.id;
+    store.recordLesson({
+      id: "pending-lesson",
+      repo_id: repoId,
+      lesson_type: "quality",
+      title: "Pending lesson",
+      summary: "Review me",
+      confidence: "high",
+      source: "test",
+    });
+    store.recordTemplate({
+      id: "pending-template",
+      repo_id: repoId,
+      category: "feature",
+      title: "Pending template",
+      template_text: "Implement and verify.",
+      usage_notes: "",
+      source_type: "test",
+      success_score: 90,
+    });
+
+    const args: Record<string, Record<string, unknown>> = {
+      lint_prompt: { prompt: "Implement a feature", semantic: false },
+      create_questions: { gaps: [{ message: "Missing tests.", suggestedAction: "Add tests." }] },
+      finalize_prompt: { original_prompt: "Implement a feature", answers: { scope: "src" } },
+      proactive_suggest: { prompt: "Implement a feature" },
+      generate_agent_onboarding: {},
+      discover_rules: {},
+      approve_rule: { id: "missing-rule" },
+      list_learning_candidates: {},
+      review_lesson: { id: "pending-lesson", approved: true },
+      review_template: { id: "pending-template", approved: true },
+      ingest_pattern: { id: "pattern", category: "quality", description: "Verify changes." },
+      ingest_commits: { limit: 1 },
+      derive_lessons: {},
+      correlate_history: {},
+      optimize_prompt: { prompt: "Implement a feature", iterations: 1 },
+      generate_templates: {},
+      record_agent_output: { prompt_id: "external-prompt", output_summary: "Completed." },
+      evaluate_prompt: { prompt: "Implement src/a.ts and run npm test." },
+      compare_prompt_variants: {
+        baseline_prompt: "Implement feature",
+        variant_a: "Implement feature",
+        variant_b: "Implement feature and run tests",
+      },
+    };
+
+    for (const tool of list.tools) {
+      await expect(dispatch({ params: { name: tool.name, arguments: args[tool.name] } }))
+        .resolves.toHaveProperty("content");
+    }
+  });
 });

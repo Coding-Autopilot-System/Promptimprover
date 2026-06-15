@@ -1,4 +1,4 @@
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 import { EventStore } from "./event-store.js";
 import { RuntimeLogger } from "../core/logger.js";
 
@@ -67,23 +67,23 @@ export class CommitIngester {
   private getLatestCommits(repoPath: string, limit: number, lastSha: string | null = null): GitCommit[] {
     // Format: SHA|Author|Date(ISO)|Message
     const format = "%H|%an|%ai|%s";
-    let logCommand = `git log -n ${limit} --pretty=format:"${format}"`;
+    let logArgs = ["log", "-n", String(limit), `--pretty=format:${format}`];
     
     if (lastSha) {
       // Fetch all commits from lastSha to HEAD
       // We use --reverse to ingest in chronological order
-      logCommand = `git log ${lastSha}..HEAD --pretty=format:"${format}" --reverse`;
+      logArgs = ["log", `${lastSha}..HEAD`, `--pretty=format:${format}`, "--reverse"];
       RuntimeLogger.info(`Fetching commits since ${lastSha.substring(0, 7)}...`);
     }
 
     let logOutput: string;
     try {
-      logOutput = execSync(logCommand, { cwd: repoPath, encoding: "utf-8" });
+      logOutput = this.runGit(repoPath, logArgs);
     } catch (error) {
       // Fallback if lastSha is not found in the repo (e.g. force push or shallow clone issues)
       if (lastSha) {
         RuntimeLogger.warn(`Failed to fetch commits since ${lastSha}, falling back to last ${limit} commits.`);
-        logOutput = execSync(`git log -n ${limit} --pretty=format:"${format}"`, { cwd: repoPath, encoding: "utf-8" });
+        logOutput = this.runGit(repoPath, ["log", "-n", String(limit), `--pretty=format:${format}`]);
       } else {
         throw error;
       }
@@ -97,20 +97,14 @@ export class CommitIngester {
       const [sha, author, date, message] = line.split("|");
       
       // Get changed files
-      const filesOutput = execSync(
-        `git show --name-only --pretty=format: ${sha}`,
-        { cwd: repoPath, encoding: "utf-8" }
-      );
+      const filesOutput = this.runGit(repoPath, ["show", "--name-only", "--pretty=format:", sha]);
       const files = filesOutput.split("\n").filter(f => f.trim().length > 0);
 
       // Get diff stats (shortstat)
       // Example output: " 1 file changed, 10 insertions(+), 5 deletions(-)"
       let stats = { insertions: 0, deletions: 0 };
       try {
-        const statOutput = execSync(
-          `git show --shortstat --pretty=format: ${sha}`,
-          { cwd: repoPath, encoding: "utf-8" }
-        ).trim();
+        const statOutput = this.runGit(repoPath, ["show", "--shortstat", "--pretty=format:", sha]).trim();
         
         if (statOutput) {
           const insMatch = statOutput.match(/(\d+) insertion/);
@@ -126,5 +120,13 @@ export class CommitIngester {
     }
 
     return commits;
+  }
+
+  private runGit(repoPath: string, args: string[]): string {
+    return execFileSync("git", args, {
+      cwd: repoPath,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
   }
 }
