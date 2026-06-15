@@ -93,4 +93,17 @@ describe("global registration doctor", () => {
     expect(result.stdout + result.stderr).not.toContain("do-not-print-this");
     expect(existsSync(join(root, ".claude.json"))).toBe(false);
   });
+
+  it("refuses to merge invalid JSON without overwriting it", () => {
+    const root = makeRoot();
+    mkdirSync(join(root, ".claude"), { recursive: true });
+    const configPath = join(root, ".claude", "settings.json");
+    writeFileSync(configPath, "{", "utf8");
+
+    const result = run(root, "-Apply");
+    expect(result.status, result.stdout + result.stderr).toBe(2);
+    expect(result.stdout + result.stderr).toContain("Cannot safely merge invalid JSON config");
+    expect(readFileSync(configPath, "utf8")).toBe("{");
+    expect(existsSync(join(root, ".codex", "config.toml"))).toBe(false);
+  });
 });

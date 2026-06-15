@@ -267,6 +267,19 @@ function Set-TomlSection {
     return $Content + $section
 }
 
+function Inspect-TomlConfig {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    if (-not (Test-Path -LiteralPath $Path)) { return }
+    $content = [System.IO.File]::ReadAllText($Path)
+    if (Test-Mojibake $content) {
+        $script:Issues.Add("mojibake detected: $Path")
+    }
+    foreach ($match in [regex]::Matches($content, '(?im)^\s*([A-Za-z0-9_.-]*(?:key|token|secret|password|credential|authorization|bearer)[A-Za-z0-9_.-]*)\s*=\s*(?!"\$\{)[^#\r\n]+')) {
+        $script:Issues.Add("plaintext credential field: `$.$($match.Groups[1].Value)")
+    }
+}
+
 function Update-CodexConfig {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
@@ -274,12 +287,6 @@ function Update-CodexConfig {
     )
 
     $content = if (Test-Path -LiteralPath $Path) { [System.IO.File]::ReadAllText($Path) } else { "" }
-    if (Test-Mojibake $content) {
-        $script:Issues.Add("mojibake detected: $Path")
-    }
-    foreach ($match in [regex]::Matches($content, '(?im)^\s*([A-Za-z0-9_.-]*(?:key|token|secret|password|credential|authorization|bearer)[A-Za-z0-9_.-]*)\s*=\s*(?!"\$\{)[^#\r\n]+')) {
-        $script:Issues.Add("plaintext credential field: `$.$($match.Groups[1].Value)")
-    }
 
     $desiredContent = $content
     foreach ($serverName in $Servers.Keys) {
@@ -339,11 +346,34 @@ Write-Host "Mode: $(if ($Apply) { 'Apply' } else { 'Check' })"
 Write-Host "Profile: $profile"
 Write-Host "Checkout: $repoRoot"
 
+$codexConfigPath = Join-Path $codexRoot "config.toml"
+$claudeMcpPath = Join-Path $profile ".claude.json"
+$claudeSettingsPath = Join-Path $profile ".claude\settings.json"
+$geminiSettingsPath = Join-Path $profile ".gemini\settings.json"
+
 try {
-    Update-CodexConfig (Join-Path $codexRoot "config.toml") $servers
-    Update-JsonConfig "Claude Code MCP" (Join-Path $profile ".claude.json") $servers
-    Update-JsonConfig "Claude Code hooks" (Join-Path $profile ".claude\settings.json") ([ordered]@{}) $claudeHooks["hooks"]
-    Update-JsonConfig "Gemini" (Join-Path $profile ".gemini\settings.json") $servers $geminiHooks["hooks"]
+    Inspect-TomlConfig $codexConfigPath
+    [void](Read-JsonConfig $claudeMcpPath)
+    [void](Read-JsonConfig $claudeSettingsPath)
+    [void](Read-JsonConfig $geminiSettingsPath)
+} catch {
+    Write-Warning $_.Exception.Message
+    exit 2
+}
+
+if ($Apply -and $script:Issues.Count -gt 0) {
+    foreach ($issue in $script:Issues | Select-Object -Unique) {
+        Write-Warning $issue
+    }
+    Write-Warning "Apply refused because preflight diagnostics must be resolved first."
+    exit 2
+}
+
+try {
+    Update-CodexConfig $codexConfigPath $servers
+    Update-JsonConfig "Claude Code MCP" $claudeMcpPath $servers
+    Update-JsonConfig "Claude Code hooks" $claudeSettingsPath ([ordered]@{}) $claudeHooks["hooks"]
+    Update-JsonConfig "Gemini" $geminiSettingsPath $servers $geminiHooks["hooks"]
 } catch {
     Write-Warning $_.Exception.Message
     exit 2
