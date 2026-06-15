@@ -737,7 +737,8 @@ Output ONLY the JSON array. If no gaps, return [].`,
     // Start Background Autonomy
     this.backgroundAutonomy = new BackgroundAutonomyService(
       this.rootPath,
-      this.requestModelText.bind(this)
+      this.requestModelText.bind(this),
+      30_000, // AUTO-03: poll git every 30s
     );
     this.backgroundAutonomy.start();
 
