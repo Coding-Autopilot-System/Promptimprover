@@ -44,4 +44,18 @@ describe("TimelineProvider", () => {
     expect(timeline[0].summary).toBe("new event");
     expect(timeline[1].type).toBe("prompt");
   });
+
+  it("uses empty detail fallbacks and applies the requested limit", () => {
+    const provider = new TimelineProvider();
+    const prepare = vi.fn()
+      .mockReturnValueOnce({ all: vi.fn().mockReturnValue([{ type: "prompt", id: "p", timestamp: "2026-01-01", summary: "p", details: null }]) })
+      .mockReturnValueOnce({ all: vi.fn().mockReturnValue([{ type: "commit", id: "c", timestamp: "2026-01-03", summary: "c", details: null }]) })
+      .mockReturnValueOnce({ all: vi.fn().mockReturnValue([{ type: "log", id: "e", timestamp: "2026-01-02", summary: "e", details: null }]) });
+    (provider as any).eventStore = { db: { prepare } };
+
+    expect(provider.getUnifiedTimeline(2)).toEqual([
+      expect.objectContaining({ id: "c", details: { files: [] } }),
+      expect.objectContaining({ id: "e", details: {} }),
+    ]);
+  });
 });

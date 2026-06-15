@@ -3,6 +3,7 @@ import { EventStore } from "../src/history/event-store.js";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
+import Database from "better-sqlite3";
 
 describe("EventStore", () => {
   const testDir = path.join(os.tmpdir(), "refiner-test-" + Date.now());
@@ -71,6 +72,27 @@ describe("EventStore", () => {
     const eRow = db.prepare("SELECT * FROM events WHERE prompt_id = ?").get("prm_1");
     expect(eRow).toBeDefined();
     expect(eRow.event_type).toBe("prompt_received");
+  });
+
+  it("records a global lesson without a repository id", () => {
+    const store = EventStore.getInstance();
+    store.recordLesson({
+      id: "global-lesson",
+      lesson_type: "quality",
+      title: "Global",
+      summary: "Global lesson",
+      confidence: "high",
+      source: "test",
+    });
+    const db = (store as any).db;
+    expect(db.prepare("SELECT repo_id FROM lessons WHERE id = ?").get("global-lesson")).toEqual({ repo_id: null });
+  });
+
+  it("uses the default global directory when no override is configured", () => {
+    const previous = process.env.PROMPT_REFINER_GLOBAL_DIR;
+    delete process.env.PROMPT_REFINER_GLOBAL_DIR;
+    expect((EventStore as any).resolveDatabasePath()).toContain(".refiner");
+    process.env.PROMPT_REFINER_GLOBAL_DIR = previous;
   });
 
   it("should expose only approved lessons to future refinements", () => {
@@ -178,5 +200,181 @@ describe("EventStore", () => {
     expect(store.getTemplates(identity.id)).toMatchObject([
       { id: "approved", repoId: identity.id, approved: 1, deprecated: 0 },
     ]);
+  });
+
+  it("records complete optional metadata and all execution updates", () => {
+    const store = EventStore.getInstance();
+    store.recordEvent({
+      id: "complete-event",
+      event_type: "complete",
+      repo_id: "repo",
+      session_id: "session",
+      prompt_id: "prompt",
+      execution_id: "execution",
+      commit_id: "commit",
+      timestamp: "2026-06-15T00:00:00Z",
+      severity: "warning",
+      summary: "complete",
+      details_json: JSON.stringify({ complete: true }),
+    });
+    store.recordPrompt({
+      id: "complete-prompt",
+      repo_id: "repo",
+      session_id: "session",
+      timestamp: "2026-06-15T00:00:00Z",
+      client: "test",
+      agent_name: "agent",
+      raw_prompt: "complete",
+      normalized_prompt: "normalized",
+      intent: "test",
+      complexity: "high",
+      scope: "module",
+      risk: "low",
+      tags_json: "[\"complete\"]",
+    });
+    store.recordExecution({
+      id: "complete-execution",
+      prompt_id: "complete-prompt",
+      workflow_name: "test",
+      executor_name: "test",
+      status: "started",
+      started_at: "2026-06-15T00:00:00Z",
+      ended_at: "2026-06-15T00:01:00Z",
+      result_summary: "initial",
+      artifacts_json: "{\"initial\":true}",
+    });
+
+    store.updateExecution({ id: "complete-execution" });
+    store.updateExecution({
+      id: "complete-execution",
+      status: "completed",
+      ended_at: "2026-06-15T00:02:00Z",
+      result_summary: "done",
+      artifacts_json: "{\"done\":true}",
+    });
+
+    const db = (store as any).db;
+    expect(store.getExecutionByPromptId("missing")).toBeNull();
+    expect(db.prepare("SELECT * FROM executions WHERE id = ?").get("complete-execution")).toMatchObject({
+      status: "completed",
+      ended_at: "2026-06-15T00:02:00Z",
+      result_summary: "done",
+      artifacts_json: "{\"done\":true}",
+    });
+  });
+
+  it("records clusters and returns an existing canonical repository", () => {
+    const store = EventStore.getInstance();
+    store.recordCluster({
+      id: "cluster",
+      repo_id: "repo",
+      intent: "test",
+      category: "quality",
+      cluster_title: "Quality",
+      cluster_summary: "Quality cluster",
+      representative_prompt: "Test it",
+      prompt_count: 2,
+      success_rate: 100,
+    });
+
+    const first = store.ensureRepository("C:/repo/existing");
+    const second = store.ensureRepository("C:/repo/existing");
+    expect(second).toEqual(first);
+    expect((store as any).db.prepare("SELECT * FROM prompt_clusters WHERE id = ?").get("cluster")).toMatchObject({
+      prompt_count: 2,
+      success_rate: 100,
+    });
+  });
+
+  it("backs up and restores a verified database", async () => {
+    const store = EventStore.getInstance();
+    store.recordEvent({ id: "before-backup", event_type: "test", summary: "persist me" });
+    const backupPath = path.join(testDir, "backups", "events.db");
+
+    await expect(store.backup(backupPath)).resolves.toBe(backupPath);
+    store.recordEvent({ id: "after-backup", event_type: "test", summary: "remove me" });
+    const restored = EventStore.restore(backupPath);
+    const db = (restored as any).db;
+
+    expect(db.prepare("SELECT id FROM events WHERE id = ?").get("before-backup")).toBeDefined();
+    expect(db.prepare("SELECT id FROM events WHERE id = ?").get("after-backup")).toBeUndefined();
+  });
+
+  it("rejects missing and integrity-failing backups", async () => {
+    const store = EventStore.getInstance();
+    await expect(() => EventStore.restore(path.join(testDir, "missing.db"))).toThrow("Backup does not exist");
+
+    const originalPragma = Database.prototype.pragma;
+    const pragmaSpy = vi.spyOn(Database.prototype, "pragma").mockImplementation(function (this: Database.Database, source: string, options?: any) {
+      if (source === "integrity_check") {
+        return "corrupt" as any;
+      }
+      return originalPragma.call(this, source, options);
+    });
+
+    const backupPath = path.join(testDir, "bad-backup.db");
+    await expect(store.backup(backupPath)).rejects.toThrow("Backup integrity check failed");
+    pragmaSpy.mockRestore();
+
+    await store.backup(backupPath);
+    const restorePragmaSpy = vi.spyOn(Database.prototype, "pragma").mockImplementation(function (this: Database.Database, source: string, options?: any) {
+      if (source === "integrity_check") {
+        return "corrupt" as any;
+      }
+      return originalPragma.call(this, source, options);
+    });
+    expect(() => EventStore.restore(backupPath)).toThrow("Backup integrity check failed");
+    restorePragmaSpy.mockRestore();
+  });
+
+  it("continues when WAL mode is unavailable", () => {
+    const originalPragma = Database.prototype.pragma;
+    const pragmaSpy = vi.spyOn(Database.prototype, "pragma").mockImplementation(function (this: Database.Database, source: string, options?: any) {
+      if (source === "journal_mode = WAL") {
+        throw new Error("WAL unavailable");
+      }
+      return originalPragma.call(this, source, options);
+    });
+    expect(EventStore.getInstance()).toBeDefined();
+    EventStore.getInstance().close();
+    pragmaSpy.mockRestore();
+  });
+
+  it("logs and rethrows schema initialization errors", () => {
+    const execSpy = vi.spyOn(Database.prototype, "exec").mockImplementationOnce(function (this: Database.Database) {
+      throw new Error("schema failure");
+    });
+
+    expect(() => EventStore.getInstance()).toThrow("schema failure");
+    execSpy.mockRestore();
+    expect(() => fs.rmSync(testDir, { recursive: true, force: true })).not.toThrow();
+  });
+
+  it("supports rejection decisions and closing a non-singleton store", () => {
+    const store = EventStore.getInstance();
+    store.recordLesson({
+      id: "reject-lesson",
+      repo_id: "repo",
+      lesson_type: "quality",
+      title: "Reject",
+      summary: "Reject",
+      confidence: "low",
+      source: "test",
+    });
+    store.recordTemplate({
+      id: "approve-template",
+      repo_id: "repo",
+      category: "test",
+      title: "Approve",
+      template_text: "Approve",
+      usage_notes: "",
+      source_type: "test",
+      success_score: 1,
+    });
+
+    expect(store.reviewLesson("repo", "reject-lesson", false)).toBe(true);
+    expect(store.reviewTemplate("repo", "approve-template", true)).toBe(true);
+    (EventStore as any).instance = null;
+    expect(() => store.close()).not.toThrow();
   });
 });

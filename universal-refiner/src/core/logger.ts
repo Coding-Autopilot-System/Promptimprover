@@ -87,8 +87,6 @@ export class RuntimeLogger {
   }
 
   static error(message: string, meta?: unknown) {
-    if (shouldLog("error")) {
-      write("error", message, meta);
-    }
+    write("error", message, meta);
   }
 }

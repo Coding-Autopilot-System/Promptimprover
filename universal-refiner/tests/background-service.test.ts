@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({
   debug: vi.fn(),
   error: vi.fn(),
   dashboard: vi.fn(),
+  poller: { on: vi.fn(), start: vi.fn(), stop: vi.fn() },
+  pollerConstructor: vi.fn(),
 }));
 
 vi.mock("chokidar", () => ({ watch: mocks.watch }));
@@ -18,6 +20,16 @@ vi.mock("../src/history/correlation-engine.js", () => ({ CorrelationEngine: clas
 vi.mock("../src/history/lesson-extractor.js", () => ({ LessonExtractor: class { extractNewLessons = mocks.extract; } }));
 vi.mock("../src/core/logger.js", () => ({ RuntimeLogger: { info: mocks.info, debug: mocks.debug, error: mocks.error } }));
 vi.mock("../src/core/dashboard.js", () => ({ CommandCenterDashboard: { log: mocks.dashboard } }));
+vi.mock("../src/history/git-poller.js", () => ({
+  GitPoller: class {
+    constructor(rootPath: string, interval: number) {
+      mocks.pollerConstructor(rootPath, interval);
+    }
+    on = mocks.poller.on;
+    start = mocks.poller.start;
+    stop = mocks.poller.stop;
+  },
+}));
 
 import { BackgroundAutonomyService } from "../src/core/background-service.js";
 
@@ -59,5 +71,44 @@ describe("BackgroundAutonomyService", () => {
 
     expect(mocks.debug).toHaveBeenCalledWith(expect.stringContaining("src/b.ts"));
     expect(mocks.error).toHaveBeenCalledWith("Background Autonomy cycle failed", expect.any(Error));
+  });
+
+  it("starts and stops git polling and reacts to discovered commits", async () => {
+    vi.useFakeTimers();
+    const service = new BackgroundAutonomyService("C:/repo", vi.fn(), 25);
+    service.start();
+    await service.idle();
+
+    const commitHandler = mocks.poller.on.mock.calls.find(call => call[0] === "commits")?.[1];
+    commitHandler();
+    await vi.advanceTimersByTimeAsync(3000);
+    await service.idle();
+    service.stop();
+    vi.useRealTimers();
+
+    expect(mocks.pollerConstructor).toHaveBeenCalledWith("C:/repo", 25);
+    expect(mocks.poller.start).toHaveBeenCalledOnce();
+    expect(mocks.poller.stop).toHaveBeenCalledOnce();
+    expect(mocks.ingest).toHaveBeenCalledTimes(2);
+  });
+
+  it("coalesces a triggered cycle while the initial cycle is pending", async () => {
+    vi.useFakeTimers();
+    let release!: () => void;
+    mocks.ingest.mockReturnValue(new Promise<number>(resolve => {
+      release = () => resolve(1);
+    }));
+    const service = new BackgroundAutonomyService("C:/repo", vi.fn());
+    service.start();
+    const changeHandler = mocks.watcher.on.mock.calls.find(call => call[0] === "all")?.[1];
+    changeHandler("change", "src/a.ts");
+    await vi.advanceTimersByTimeAsync(3000);
+
+    expect(mocks.debug).toHaveBeenCalledWith("Background autonomy cycle coalesced", { rootPath: "C:/repo" });
+    release();
+    await service.idle();
+    service.stop();
+    service.stop();
+    vi.useRealTimers();
   });
 });

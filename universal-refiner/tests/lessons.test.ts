@@ -67,4 +67,34 @@ describe("LessonExtractor", () => {
     expect(mockRequestModel).not.toHaveBeenCalled();
     expect(db.prepare("SELECT * FROM lessons WHERE prompt_id = ?").get("p-failed")).toBeUndefined();
   });
+
+  it("does not record a lesson when the model is unavailable or returns malformed output", async () => {
+    const store = EventStore.getInstance();
+    const db = (store as any).db;
+    store.recordPrompt({ id: "p-model", repo_id: "test", client: "cli", raw_prompt: "Create model test" });
+    store.recordCommit({
+      id: "c-model",
+      repo_id: "test",
+      sha: "sha-model",
+      author: "test",
+      message: "test: model",
+      committed_at: "2026-04-12T10:00:00Z",
+    });
+    store.recordExecution({
+      id: "e-model",
+      prompt_id: "p-model",
+      workflow_name: "test",
+      executor_name: "test",
+      status: "completed",
+    });
+    store.linkCommitToExecution("e-model", "c-model");
+
+    const request = vi.fn().mockResolvedValueOnce(null).mockResolvedValueOnce("not json");
+    const extractor = new LessonExtractor(request);
+    await extractor.extractNewLessons();
+    await extractor.extractNewLessons();
+
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(db.prepare("SELECT * FROM lessons WHERE prompt_id = ?").get("p-model")).toBeUndefined();
+  });
 });

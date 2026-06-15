@@ -49,17 +49,19 @@ export class LocalBrain {
 
     try {
       const data = JSON.parse(fs.readFileSync(storagePath, "utf-8"));
+      const patterns: LearnedPattern[] = Array.isArray(data.patterns) ? data.patterns : [];
       const newPattern: LearnedPattern = {
         ...pattern,
         learnedAt: new Date().toISOString()
       };
       
-      const existingIndex = data.patterns.findIndex((p: any) => p.id === pattern.id);
+      const existingIndex = patterns.findIndex((p: LearnedPattern) => p.id === pattern.id);
       if (existingIndex >= 0) {
-        data.patterns[existingIndex] = newPattern;
+        patterns[existingIndex] = newPattern;
       } else {
-        data.patterns.push(newPattern);
+        patterns.push(newPattern);
       }
+      data.patterns = patterns;
 
       fs.writeFileSync(storagePath, JSON.stringify(data, null, 2));
       return newPattern;
@@ -75,7 +77,8 @@ export class LocalBrain {
 
     try {
       const data = JSON.parse(fs.readFileSync(storagePath, "utf-8"));
-      const pattern = data.patterns.find((p: LearnedPattern) => p.id === id);
+      const patterns: LearnedPattern[] = Array.isArray(data.patterns) ? data.patterns : [];
+      const pattern = patterns.find((p: LearnedPattern) => p.id === id);
       if (pattern) {
         pattern.isProposed = false;
         fs.writeFileSync(storagePath, JSON.stringify(data, null, 2));

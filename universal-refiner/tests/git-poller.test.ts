@@ -132,4 +132,13 @@ describe("GitPoller", () => {
     await vi.advanceTimersByTimeAsync(5000);
     expect(ingestLatest.mock.calls.length).toBe(callsBeforeStop);
   });
+
+  it("stop() is idempotent before start and handles a missing timer", () => {
+    const poller = new GitPoller("/repo");
+    expect(() => poller.stop()).not.toThrow();
+
+    (poller as any).running = true;
+    (poller as any).timer = null;
+    expect(() => poller.stop()).not.toThrow();
+  });
 });

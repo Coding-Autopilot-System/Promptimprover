@@ -66,4 +66,15 @@ describe("hook MCP client", () => {
     await callMcpTool("lint_prompt", {});
     expect(mocks.request.mock.calls[0][2]).toEqual({ timeout: 15_000 });
   });
+
+  it("selects an existing built candidate, rejects invalid timeouts, and tolerates close failures", async () => {
+    mocks.existsSync.mockImplementation((candidate: string) => candidate.includes("dist"));
+    mocks.request.mockResolvedValue({ content: [{ type: "text", text: "ok" }] });
+    mocks.close.mockRejectedValue(new Error("close failed"));
+    process.env.PROMPTIMPROVER_HOOK_TIMEOUT_MS = "-1";
+
+    expect(resolveServerPath()).toMatch(/dist[\\/]src[\\/]index\.js$/);
+    await expect(callMcpTool("lint_prompt", {})).resolves.toBe("ok");
+    expect(mocks.request.mock.calls[0][2]).toEqual({ timeout: 15_000 });
+  });
 });

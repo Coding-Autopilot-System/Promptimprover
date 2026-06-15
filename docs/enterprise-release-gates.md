@@ -37,7 +37,7 @@ The first measured baseline on June 14, 2026 exposed substantial untested produc
 
 Initial high-risk gaps include MCP dispatcher behavior, background autonomy, template generation, prompt optimization, configuration failure paths, and operational dashboard branches.
 
-The enforced ratchet is currently 86% statements, 76% branches, 93% functions, and 88% lines. It cannot be lowered without an approved exception.
+The enforced ratchet is 100% statements, branches, functions, and lines. It cannot be lowered without an approved exception.
 
 ## Operator Recovery
 

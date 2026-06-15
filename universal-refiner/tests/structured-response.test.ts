@@ -12,9 +12,13 @@ describe("parseStructuredResponse", () => {
 
   it("extracts JSON after bounded explanatory text", () => {
     expect(parseStructuredResponse<string[]>('Result:\n["one","two"]')).toEqual(["one", "two"]);
+    expect(parseStructuredResponse<{ ready: boolean }>('Result: {"ready":true} trailing')).toEqual({ ready: true });
+    expect(parseStructuredResponse<{ ready: boolean }>('prefix {"ready":true} and [ignored]')).toEqual({ ready: true });
   });
 
   it("rejects responses without JSON", () => {
     expect(() => parseStructuredResponse("not structured")).toThrow(/JSON/);
+    expect(() => parseStructuredResponse("prefix { incomplete")).toThrow(/incomplete JSON/);
+    expect(() => parseStructuredResponse("prefix [ incomplete")).toThrow(/incomplete JSON/);
   });
 });

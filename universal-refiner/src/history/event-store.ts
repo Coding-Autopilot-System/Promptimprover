@@ -16,7 +16,12 @@ export class EventStore {
     this.dbPath = dbPath;
     this.ensureDirectory(path.dirname(this.dbPath));
     this.db = new Database(this.dbPath);
-    this.initializeSchema();
+    try {
+      this.initializeSchema();
+    } catch (error) {
+      this.db.close();
+      throw error;
+    }
   }
 
   static getInstance(): EventStore {

@@ -70,7 +70,7 @@ export class PromptRefinerServer {
         providers.push(new LocalOpenAiProvider(config));
       } catch (error) {
         RuntimeLogger.warn("Local semantic provider configuration rejected", {
-          error: error instanceof Error ? error.message : String(error),
+          error: String(error),
         });
       }
     }
@@ -147,7 +147,7 @@ export class PromptRefinerServer {
     RuntimeLogger.warn("MCP sampling is unavailable; semantic features will fall back to local-only behavior", {
       rootPath: this.rootPath,
       reason,
-      error: error instanceof Error ? error.stack || error.message : String(error),
+      error: String(error),
     });
     CommandCenterDashboard.log(`Semantic Intelligence unavailable: ${reason}`);
   }
@@ -180,7 +180,7 @@ export class PromptRefinerServer {
 
       RuntimeLogger.warn(`MCP sampling request failed`, {
         rootPath: this.rootPath,
-        error: error instanceof Error ? error.stack || error.message : String(error),
+        error: String(error),
       });
       return null;
     }
@@ -220,7 +220,7 @@ Output ONLY the JSON array. If no gaps, return [].`,
         rootPath: this.rootPath,
         promptPreview: prompt.substring(0, 120),
         responsePreview: responseText.substring(0, 300),
-        error: error instanceof Error ? error.stack || error.message : String(error),
+        error: String(error),
       });
       CommandCenterDashboard.log(`Semantic Analysis returned invalid JSON.`);
       return [];

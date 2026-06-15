@@ -83,4 +83,56 @@ describe("CommitIngester", () => {
     expect(errorSpy).toHaveBeenCalled();
     errorSpy.mockRestore();
   });
+
+  it("uses the static default limit and ignores an empty git log", async () => {
+    (execFileSync as any).mockReturnValue("");
+
+    await expect(CommitIngester.ingestLatest("C:/repo/empty")).resolves.toBe(0);
+    expect(execFileSync).toHaveBeenCalledWith(
+      "git",
+      ["log", "-n", "10", "--pretty=format:%H|%an|%ai|%s"],
+      expect.any(Object),
+    );
+  });
+
+  it("falls back when the stored SHA is unavailable and tolerates incomplete stats", async () => {
+    const store = EventStore.getInstance();
+    const identity = store.ensureRepository("C:/repo/rebased");
+    store.recordCommit({
+      id: "old",
+      repo_id: identity.id,
+      sha: "old-sha",
+      author: "author",
+      message: "old",
+      committed_at: "2026-01-01T00:00:00Z",
+    });
+
+    (execFileSync as any).mockImplementation((_file: string, args: string[]) => {
+      if (args[0] === "log" && args[1] === "old-sha..HEAD") {
+        throw new Error("unknown revision");
+      }
+      if (args[0] === "log") {
+        return "\nsha-new|author|2026-01-02T00:00:00Z|new\nsha-statless|author|2026-01-03T00:00:00Z|statless";
+      }
+      if (args.includes("--name-only")) {
+        return "\nsrc/new.ts\n";
+      }
+      if (args.includes("--shortstat") && args.at(-1) === "sha-statless") {
+        throw new Error("shortstat unavailable");
+      }
+      if (args.includes("--shortstat")) {
+        return " 1 file changed";
+      }
+      return "";
+    });
+
+    await expect(new CommitIngester().ingest("C:/repo/rebased", 2)).resolves.toBe(2);
+
+    const rows = (store as any).db.prepare("SELECT sha, diff_stats_json FROM commits WHERE repo_id = ? ORDER BY sha").all(identity.id);
+    expect(rows).toMatchObject([
+      { sha: "old-sha" },
+      { sha: "sha-new", diff_stats_json: JSON.stringify({ insertions: 0, deletions: 0 }) },
+      { sha: "sha-statless", diff_stats_json: JSON.stringify({ insertions: 0, deletions: 0 }) },
+    ]);
+  });
 });
