@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import { redact, redactString } from "./redaction.js";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
@@ -33,25 +34,19 @@ function serializeMeta(meta?: unknown): string {
     return "";
   }
 
-  if (meta instanceof Error) {
-    return `${meta.name}: ${meta.message}\n${meta.stack || ""}`.trim();
-  }
-
-  if (typeof meta === "string") {
-    return meta;
-  }
+  const safeMeta = redact(meta);
 
   try {
-    return JSON.stringify(meta);
+    return typeof safeMeta === "string" ? safeMeta : JSON.stringify(safeMeta);
   } catch {
-    return String(meta);
+    return redactString(String(safeMeta));
   }
 }
 
 function write(level: LogLevel, message: string, meta?: unknown) {
   const timestamp = new Date().toISOString();
   const renderedMeta = serializeMeta(meta);
-  const line = `[${timestamp}] [${level.toUpperCase()}] ${message}${renderedMeta ? ` | ${renderedMeta}` : ""}`;
+  const line = `[${timestamp}] [${level.toUpperCase()}] ${redactString(message)}${renderedMeta ? ` | ${renderedMeta}` : ""}`;
 
   try {
     fs.mkdirSync(getGlobalDir(), { recursive: true });

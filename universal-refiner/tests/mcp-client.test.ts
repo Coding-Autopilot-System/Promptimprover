@@ -28,9 +28,11 @@ import { callMcpTool, resolveServerPath } from "../hooks/lib/mcp-client.js";
 
 describe("hook MCP client", () => {
   beforeEach(() => {
-    mocks.close.mockResolvedValue(undefined);
-    mocks.connect.mockResolvedValue(undefined);
-    mocks.existsSync.mockReturnValue(false);
+    mocks.close.mockReset().mockResolvedValue(undefined);
+    mocks.connect.mockReset().mockResolvedValue(undefined);
+    mocks.request.mockReset();
+    mocks.transport.mockReset();
+    mocks.existsSync.mockReset().mockReturnValue(false);
   });
 
   afterEach(() => {
@@ -47,7 +49,10 @@ describe("hook MCP client", () => {
 
     await expect(callMcpTool("lint_prompt", { prompt: "test" })).resolves.toBe("result");
     expect(mocks.transport).toHaveBeenCalledWith(expect.objectContaining({ args: [resolveServerPath()] }));
-    expect(mocks.request.mock.calls[0][2]).toEqual({ timeout: 25 });
+    const requestOptions = mocks.request.mock.calls[0][2] as { timeout: number; maxTotalTimeout: number };
+    expect(requestOptions.timeout).toBeGreaterThan(0);
+    expect(requestOptions.timeout).toBeLessThanOrEqual(25);
+    expect(requestOptions.maxTotalTimeout).toBe(requestOptions.timeout);
     expect(mocks.close).toHaveBeenCalledOnce();
   });
 
@@ -59,12 +64,72 @@ describe("hook MCP client", () => {
     expect(mocks.close).toHaveBeenCalledTimes(2);
   });
 
+  it("retries one reconnect-safe transport failure with a fresh client", async () => {
+    mocks.request
+      .mockRejectedValueOnce(Object.assign(new Error("private transport detail"), { code: "ECONNRESET" }))
+      .mockResolvedValueOnce({ content: [{ type: "text", text: "recovered" }] });
+
+    await expect(callMcpTool("lint_prompt", {})).resolves.toBe("recovered");
+    expect(mocks.connect).toHaveBeenCalledTimes(2);
+    expect(mocks.request).toHaveBeenCalledTimes(2);
+    expect(mocks.close).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry non-transport failures or more than once", async () => {
+    mocks.request
+      .mockRejectedValueOnce(Object.assign(new Error("closed"), { code: -32000 }))
+      .mockRejectedValueOnce(Object.assign(new Error("closed again"), { code: -32000 }));
+
+    await expect(callMcpTool("lint_prompt", {})).rejects.toThrow("closed again");
+    expect(mocks.request).toHaveBeenCalledTimes(2);
+
+    mocks.request.mockReset().mockRejectedValueOnce(new Error("tool failed"));
+    await expect(callMcpTool("lint_prompt", {})).rejects.toThrow("tool failed");
+    expect(mocks.request).toHaveBeenCalledOnce();
+
+    mocks.request.mockReset().mockRejectedValueOnce("non-error failure");
+    await expect(callMcpTool("lint_prompt", {})).rejects.toBe("non-error failure");
+  });
+
+  it("bounds the total connect and request duration", async () => {
+    vi.useFakeTimers();
+    process.env.PROMPTIMPROVER_HOOK_TIMEOUT_MS = "25";
+    mocks.connect.mockImplementation(() => new Promise(() => undefined));
+
+    const result = callMcpTool("lint_prompt", {});
+    const assertion = expect(result).rejects.toMatchObject({ code: -32001 });
+    await vi.advanceTimersByTimeAsync(25);
+
+    await assertion;
+    expect(mocks.request).not.toHaveBeenCalled();
+    expect(mocks.close).toHaveBeenCalledOnce();
+    vi.useRealTimers();
+  });
+
+  it("shares one deadline across connection and request", async () => {
+    vi.useFakeTimers();
+    process.env.PROMPTIMPROVER_HOOK_TIMEOUT_MS = "25";
+    mocks.connect.mockImplementation(() => new Promise((resolve) => setTimeout(resolve, 15)));
+    mocks.request.mockImplementation(() => new Promise(() => undefined));
+
+    const result = callMcpTool("lint_prompt", {});
+    const assertion = expect(result).rejects.toMatchObject({ code: -32001 });
+    await vi.advanceTimersByTimeAsync(15);
+    expect(mocks.request).toHaveBeenCalledOnce();
+    expect(mocks.request.mock.calls[0][2]).toEqual({ timeout: 10, maxTotalTimeout: 10 });
+    await vi.advanceTimersByTimeAsync(10);
+
+    await assertion;
+    expect(mocks.close).toHaveBeenCalledOnce();
+    vi.useRealTimers();
+  });
+
   it("resolves built server candidates and uses the default timeout", async () => {
     mocks.request.mockResolvedValue({ content: [{ type: "text", text: "ok" }] });
 
     expect(resolveServerPath()).toMatch(/src[\\/]index\.js$/);
     await callMcpTool("lint_prompt", {});
-    expect(mocks.request.mock.calls[0][2]).toEqual({ timeout: 15_000 });
+    expect(mocks.request.mock.calls[0][2]).toEqual({ timeout: 15_000, maxTotalTimeout: 15_000 });
   });
 
   it("selects an existing built candidate, rejects invalid timeouts, and tolerates close failures", async () => {
@@ -75,6 +140,6 @@ describe("hook MCP client", () => {
 
     expect(resolveServerPath()).toMatch(/dist[\\/]src[\\/]index\.js$/);
     await expect(callMcpTool("lint_prompt", {})).resolves.toBe("ok");
-    expect(mocks.request.mock.calls[0][2]).toEqual({ timeout: 15_000 });
+    expect(mocks.request.mock.calls[0][2]).toEqual({ timeout: 15_000, maxTotalTimeout: 15_000 });
   });
 });

@@ -23,9 +23,13 @@
         "package:check": "npm pack --dry-run",
         "db:backup": "node scripts/operations/event-store-recovery.mjs backup",
         "db:restore": "node scripts/operations/event-store-recovery.mjs restore",
+        "recovery:event-store:abrupt": "node scripts/operations/event-store-abrupt-recovery.mjs",
         "acceptance:semantic": "node scripts/acceptance/semantic-provider-acceptance.mjs",
+        "acceptance:gemma:live": "node scripts/acceptance/semantic-provider-acceptance.mjs --require-live",
+        "acceptance:tracked-turn": "node scripts/acceptance/tracked-turn-acceptance.mjs",
         "stress:event-store": "node scripts/stress/event-store-stress.mjs",
-        "release:verify": "npm run build && npm run test:coverage && npm run test:acceptance && npm run acceptance:semantic && npm run test:stress && npm run stress:event-store && npm run security:audit && npm run security:secrets && npm run package:check"
+        "stress:event-store:soak": "node scripts/stress/event-store-soak.mjs",
+        "release:verify": "npm run build && npm run test:coverage && npm run test:acceptance && npm run acceptance:semantic && npm run acceptance:tracked-turn && npm run test:stress && npm run stress:event-store && npm run recovery:event-store:abrupt && npm run stress:event-store:soak && npm run security:audit && npm run security:secrets && npm run package:check"
     },
     "keywords": [
         "mcp",

@@ -91,6 +91,21 @@ describe("GitPoller", () => {
     expect(count).toBe(0);
   });
 
+  it("coalesces overlapping polls", async () => {
+    let release!: (count: number) => void;
+    ingestLatest.mockReturnValue(new Promise<number>(resolve => {
+      release = resolve;
+    }));
+    const poller = new GitPoller("/repo");
+
+    const first = poller.poll();
+    const second = poller.poll();
+    expect(ingestLatest).toHaveBeenCalledOnce();
+    release(2);
+
+    await expect(Promise.all([first, second])).resolves.toEqual([2, 2]);
+  });
+
   // -------------------------------------------------------------------------
   // AUTO-03: start() triggers polling on interval
   // -------------------------------------------------------------------------

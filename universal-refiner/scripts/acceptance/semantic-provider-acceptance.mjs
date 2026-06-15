@@ -8,12 +8,19 @@ import {
 const primary = process.env.PROMPT_REFINER_PRIMARY_MODEL || "gemma3:12b";
 const fallback = process.env.PROMPT_REFINER_FALLBACK_MODEL || "gemma3:1b";
 const liveBaseUrl = process.env.PROMPT_REFINER_ACCEPTANCE_BASE_URL;
+const requireLive = process.argv.includes("--require-live")
+  || process.env.PROMPT_REFINER_ACCEPTANCE_REQUIRE_LIVE === "true";
 const fake = await startFakeOpenAiServer({
   unavailableModels: [primary],
   responses: { [fallback]: "fallback accepted" },
 });
 
 try {
+  assert.ok(!requireLive || liveBaseUrl, [
+    "Required-live Gemma acceptance needs PROMPT_REFINER_ACCEPTANCE_BASE_URL.",
+    "Set it to the live OpenAI-compatible endpoint that serves the configured Gemma models.",
+  ].join(" "));
+
   if (liveBaseUrl) {
     for (const model of [primary, fallback]) {
       const liveProvider = new LocalOpenAiProvider({

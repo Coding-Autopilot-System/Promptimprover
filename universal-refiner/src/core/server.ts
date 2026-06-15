@@ -47,6 +47,7 @@ export class PromptRefinerServer {
   private semanticProviders: SemanticProviderChain;
   private repository: RepositoryIdentity;
   private templateSelector: ApprovedTemplateSelector;
+  private running = false;
 
   constructor(rootPath: string = ".") {
     this.rootPath = rootPath;
@@ -730,19 +731,32 @@ Output ONLY the JSON array. If no gaps, return [].`,
     });
   }
 
-  async run() {
+  async run(options: { background?: boolean } = {}) {
     const transport = new StdioServerTransport();
     await this.server.connect(transport);
+    this.running = true;
 
-    // Start Background Autonomy
-    this.backgroundAutonomy = new BackgroundAutonomyService(
-      this.rootPath,
-      this.requestModelText.bind(this),
-      30_000, // AUTO-03: poll git every 30s
-    );
-    this.backgroundAutonomy.start();
+    if (options.background) {
+      this.backgroundAutonomy = new BackgroundAutonomyService(
+        this.rootPath,
+        this.requestModelText.bind(this),
+        30_000,
+      );
+      this.backgroundAutonomy.start();
+    }
 
     RuntimeLogger.info(`Prompt Refiner ${getDisplayVersion()} running on stdio`, { rootPath: this.rootPath });
     console.error(`Prompt Refiner ${getDisplayVersion()} running on stdio`);
+  }
+
+  async stop() {
+    if (!this.running && !this.backgroundAutonomy) {
+      return;
+    }
+    this.backgroundAutonomy?.stop();
+    await this.backgroundAutonomy?.idle();
+    this.backgroundAutonomy = null;
+    await this.server.close().catch(() => undefined);
+    this.running = false;
   }
 }

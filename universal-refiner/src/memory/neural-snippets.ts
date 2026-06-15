@@ -3,6 +3,7 @@ import * as path from "path";
 // @ts-ignore
 import flexsearch from "flexsearch";
 import ts from "typescript";
+import { containsSensitiveContent, isSensitiveFilename } from "../core/redaction.js";
 
 const { Index } = flexsearch;
 
@@ -27,19 +28,35 @@ export class NeuralSnippets {
     this.isInitialized = false;
   }
 
-  private static async walkDir(dir: string, fileList: string[] = []): Promise<string[]> {
+  private static isWithinRoot(root: string, candidate: string): boolean {
+    const relative = path.relative(root, candidate);
+    return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative));
+  }
+
+  private static async walkDir(dir: string, root: string, fileList: string[] = []): Promise<string[]> {
     if (!fs.existsSync(dir)) return fileList;
-    const files = fs.readdirSync(dir);
+    const files = fs.readdirSync(dir, { withFileTypes: true });
     for (const file of files) {
-      const name = path.join(dir, file);
-      if (fs.statSync(name).isDirectory()) {
+      const name = path.join(dir, file.name);
+      const stat = fs.lstatSync(name);
+      if (stat.isSymbolicLink()) continue;
+
+      const canonicalName = fs.realpathSync.native(name);
+      if (!this.isWithinRoot(root, canonicalName)) continue;
+
+      if (file.isDirectory()) {
         const ignoreDirs = ["node_modules", "dist", "build", "out", "coverage", "tests", "test"];
-        if (!ignoreDirs.includes(file) && !file.startsWith(".")) {
-          await this.walkDir(name, fileList);
+        if (!ignoreDirs.includes(file.name) && !file.name.startsWith(".")) {
+          await this.walkDir(canonicalName, root, fileList);
         }
       } else {
-        if ((file.endsWith(".ts") || file.endsWith(".js") || file.endsWith(".py")) && !file.includes(".test.") && !file.includes(".spec.")) {
-          fileList.push(name);
+        if (
+          (file.name.endsWith(".ts") || file.name.endsWith(".js") || file.name.endsWith(".py"))
+          && !file.name.includes(".test.")
+          && !file.name.includes(".spec.")
+          && !isSensitiveFilename(file.name)
+        ) {
+          fileList.push(canonicalName);
         }
       }
     }
@@ -116,13 +133,24 @@ export class NeuralSnippets {
 
   static async initialize(rootPath: string = ".") {
     if (this.isInitialized) return;
-    const files = await this.walkDir(rootPath);
+    if (!fs.existsSync(rootPath)) {
+      this.isInitialized = true;
+      return;
+    }
+    const root = fs.realpathSync.native(rootPath);
+    const files = await this.walkDir(root, root);
     let id = 0;
     for (const filePath of files) {
+      const stat = fs.lstatSync(filePath);
+      const canonicalPath = fs.realpathSync.native(filePath);
+      if (stat.isSymbolicLink() || !this.isWithinRoot(root, canonicalPath)) continue;
+
       const content = fs.readFileSync(filePath, "utf-8");
-      const symbols = this.parseSymbols(content, filePath);
+      if (containsSensitiveContent(content)) continue;
+
+      const symbols = this.parseSymbols(content, canonicalPath);
       for (const sym of symbols) {
-        const doc: Snippet = { id: id++, filePath, content: sym.content!, symbolName: sym.symbolName, symbolType: sym.symbolType as any };
+        const doc: Snippet = { id: id++, filePath: canonicalPath, content: sym.content!, symbolName: sym.symbolName, symbolType: sym.symbolType as any };
         this.symbolIndex.add(doc.id, doc.symbolName || "");
         this.contentIndex.add(doc.id, doc.content);
         this.store.set(doc.id, doc);
@@ -131,7 +159,7 @@ export class NeuralSnippets {
       for (let i = 0; i < lines.length; i += 15) {
         const chunk = lines.slice(i, i + 25).join("\n");
         if (chunk.trim().length > 100) {
-          const doc: Snippet = { id: id++, filePath, content: chunk, symbolType: "chunk" };
+          const doc: Snippet = { id: id++, filePath: canonicalPath, content: chunk, symbolType: "chunk" };
           this.contentIndex.add(doc.id, doc.content);
           this.store.set(doc.id, doc);
         }

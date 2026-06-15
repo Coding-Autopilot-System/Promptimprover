@@ -18,6 +18,7 @@ export class GitPoller extends EventEmitter {
   private readonly intervalMs: number;
   private timer: NodeJS.Timeout | null = null;
   private running = false;
+  private inFlight: Promise<number> | null = null;
 
   constructor(repoPath: string, intervalMs = DEFAULT_POLL_INTERVAL_MS) {
     super();
@@ -58,17 +59,27 @@ export class GitPoller extends EventEmitter {
    * Safe to call externally for an immediate check.
    */
   public async poll(): Promise<number> {
-    try {
-      const count = await CommitIngester.ingestLatest(this.repoPath, 50);
-      if (count > 0) {
-        RuntimeLogger.debug(`[GitPoller] Ingested ${count} new commit(s)`, { repoPath: this.repoPath });
-        CommandCenterDashboard.log(`Background Autonomy: ${count} new commit(s) detected.`);
-        this.emit("commits", count);
-      }
-      return count;
-    } catch (err) {
-      RuntimeLogger.error("[GitPoller] Poll failed", err);
-      return 0;
+    if (this.inFlight) {
+      RuntimeLogger.debug("[GitPoller] Skipping overlapping poll", { repoPath: this.repoPath });
+      return this.inFlight;
     }
+
+    this.inFlight = (async () => {
+      try {
+        const count = await CommitIngester.ingestLatest(this.repoPath, 50);
+        if (count > 0) {
+          RuntimeLogger.debug(`[GitPoller] Ingested ${count} new commit(s)`, { repoPath: this.repoPath });
+          CommandCenterDashboard.log(`Background Autonomy: ${count} new commit(s) detected.`);
+          this.emit("commits", count);
+        }
+        return count;
+      } catch (err) {
+        RuntimeLogger.error("[GitPoller] Poll failed", err);
+        return 0;
+      } finally {
+        this.inFlight = null;
+      }
+    })();
+    return this.inFlight;
   }
 }
