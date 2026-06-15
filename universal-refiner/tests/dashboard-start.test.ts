@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   serve: vi.fn(),
   on: vi.fn(),
+  close: vi.fn(),
   error: vi.fn(),
 }));
 
@@ -16,7 +17,8 @@ import { CommandCenterDashboard } from "../src/core/dashboard.js";
 describe("dashboard server startup", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.serve.mockReturnValue({ on: mocks.on });
+    mocks.close.mockImplementation((callback?: () => void) => callback?.());
+    mocks.serve.mockReturnValue({ on: mocks.on, close: mocks.close });
   });
 
   it("binds the configured host and reports server errors", () => {
@@ -36,5 +38,12 @@ describe("dashboard server startup", () => {
     });
     expect(() => CommandCenterDashboard.start(3999, ".")).toThrow("startup failed");
     expect(mocks.error).toHaveBeenCalledWith("Dashboard failed to start on port 3999", expect.any(Error));
+  });
+
+  it("closes the active dashboard server and tolerates repeated stops", async () => {
+    CommandCenterDashboard.start(3999, ".");
+    await CommandCenterDashboard.stop();
+    await CommandCenterDashboard.stop();
+    expect(mocks.close).toHaveBeenCalledOnce();
   });
 });

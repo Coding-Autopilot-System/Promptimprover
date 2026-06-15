@@ -12,6 +12,7 @@ import { ConfigManager } from "./config.js";
 
 import { TimelineProvider } from "../history/timeline.js";
 import { EventStore } from "../history/event-store.js";
+import { AutoPilotStatus } from "./autopilot-status.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -71,6 +72,7 @@ export function isSameOriginRequest(origin: string | undefined, requestUrl: stri
 
 export class CommandCenterDashboard {
   private static rootPath: string = ".";
+  private static server: { close: (callback?: (error?: Error) => void) => void } | null = null;
 
   static async setLastRefinement(original: string, refined: string, projectPath: string = ".", gain: number = 0) {
     await AgenticBlackboard.setLastRefinement(original, refined, projectPath, gain);
@@ -348,6 +350,15 @@ export class CommandCenterDashboard {
       }
     });
 
+    app.get("/api/autopilot", (c) => {
+      try {
+        return c.json(AutoPilotStatus.getSnapshot());
+      } catch (error) {
+        this.logRouteError("api/autopilot", error);
+        return c.json({ error: "Auto-pilot status unavailable" }, 500);
+      }
+    });
+
     app.get("/api/health", async (c) => {
       const selectedPath = this.resolveSelectedPath(c.req.query("project"));
       try {
@@ -425,7 +436,7 @@ export class CommandCenterDashboard {
         return c.html(html);
       } catch (error) {
         this.logRouteError("/", error, selectedPath);
-        return c.html(`<!DOCTYPE html><html><body style="font-family:Segoe UI,sans-serif;background:#020617;color:#f8fafc;padding:2rem;"><h1>Dashboard Error</h1><p>The dashboard failed to render.</p><pre>${String(error instanceof Error ? error.stack || error.message : error)}</pre></body></html>`, 500);
+        return c.html(`<!DOCTYPE html><html><body style="font-family:Segoe UI,sans-serif;background:#020617;color:#f8fafc;padding:2rem;"><h1>Dashboard Error</h1><p>The dashboard failed to render. See sanitized runtime logs.</p></body></html>`, 500);
       }
     });
 
@@ -436,6 +447,7 @@ export class CommandCenterDashboard {
     const app = this.createApp(defaultPath);
     try {
       const server = serve({ fetch: app.fetch, port, hostname: resolveDashboardHost() });
+      this.server = server;
       server.on("error", (e: any) => {
         if (e.code === "EADDRINUSE") {
           console.error(`[Command Center] Port ${port} taken.`);
@@ -448,5 +460,16 @@ export class CommandCenterDashboard {
       RuntimeLogger.error(`Dashboard failed to start on port ${port}`, error);
       throw error;
     }
+  }
+
+  static async stop(): Promise<void> {
+    const server = this.server;
+    this.server = null;
+    if (!server) {
+      return;
+    }
+    await new Promise<void>((resolve, reject) => {
+      server.close((error?: Error) => error ? reject(error) : resolve());
+    });
   }
 }

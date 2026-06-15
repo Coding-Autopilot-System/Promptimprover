@@ -1,4 +1,4 @@
-# Codex CLI 0.138.0 does not expose per-prompt pre/post lifecycle hooks.
+# Codex CLI does not expose per-prompt pre/post lifecycle hooks.
 # Keep PromptImprover registered as an MCP server and invoke lint_prompt and
 # record_agent_output through repo instructions or explicit tool calls.
 #

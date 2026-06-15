@@ -155,10 +155,12 @@ describe("dashboard deterministic fallbacks", () => {
     const app = CommandCenterDashboard.createApp(directory);
     const error = new Error("root message");
     error.stack = "";
-    vi.spyOn(CommandCenterDashboard as any, "buildState").mockRejectedValueOnce(error);
-    const response = await app.request("/");
-    expect(await response.text()).toContain("root message");
-  });
+      vi.spyOn(CommandCenterDashboard as any, "buildState").mockRejectedValueOnce(error);
+      const response = await app.request("/");
+      const html = await response.text();
+      expect(html).toContain("See sanitized runtime logs");
+      expect(html).not.toContain("root message");
+    });
 
   it("handles review persistence failures and successful template approval", async () => {
     const app = CommandCenterDashboard.createApp(directory);

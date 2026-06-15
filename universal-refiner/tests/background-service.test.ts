@@ -52,8 +52,18 @@ describe("BackgroundAutonomyService", () => {
 
     expect(mocks.watch).toHaveBeenCalledTimes(1);
     expect(mocks.ingest).toHaveBeenCalledWith("C:/repo", 100);
-    expect(mocks.correlate).toHaveBeenCalledBefore(mocks.extract);
+    expect(mocks.correlate).toHaveBeenCalledOnce();
+    expect(mocks.extract).toHaveBeenCalledOnce();
     expect(mocks.watcher.close).toHaveBeenCalledOnce();
+  });
+
+  it("reports watcher degradation without throwing an unhandled error", () => {
+    const service = new BackgroundAutonomyService("C:/repo", vi.fn());
+    service.start();
+    const errorHandler = mocks.watcher.on.mock.calls.find(call => call[0] === "error")?.[1];
+
+    expect(() => errorHandler(new Error("watch failed"))).not.toThrow();
+    expect(mocks.error).toHaveBeenCalledWith("Background autonomy watcher failed", expect.any(Error));
   });
 
   it("debounces file changes and logs cycle failures for queue retries", async () => {

@@ -105,11 +105,18 @@ export class AgenticBlackboard {
 
   private static atomicUpdate<T>(storagePath: string, fallback: T, updater: (data: T) => void): Promise<void> {
     this.writeQueue = this.writeQueue.then(() => {
+      const temporaryPath = `${storagePath}.${process.pid}.${Date.now()}.tmp`;
       try {
         const data = this.readJsonFile<T>(storagePath, fallback);
         updater(data);
-        fs.writeFileSync(storagePath, JSON.stringify(data, null, 2));
+        fs.writeFileSync(temporaryPath, JSON.stringify(data, null, 2), { encoding: "utf8", mode: 0o600 });
+        fs.renameSync(temporaryPath, storagePath);
       } catch (error) {
+        try {
+          fs.rmSync(temporaryPath, { force: true });
+        } catch {
+          // Preserve the original persistence failure.
+        }
         RuntimeLogger.error(`Atomic update failed for ${storagePath}`, error);
       }
     });
