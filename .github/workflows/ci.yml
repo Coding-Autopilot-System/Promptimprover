@@ -65,6 +65,8 @@ jobs:
           PROMPT_REFINER_PRIMARY_MODEL: ${{ matrix.model-order == 'primary' && 'gemma3:12b' || 'gemma3:1b' }}
           PROMPT_REFINER_FALLBACK_MODEL: ${{ matrix.model-order == 'primary' && 'gemma3:1b' || 'gemma3:12b' }}
         run: npm run acceptance:semantic
+      - name: Run tracked-turn acceptance
+        run: npm run acceptance:tracked-turn
 
   stress:
     runs-on: ubuntu-latest
@@ -89,6 +91,10 @@ jobs:
           PROMPT_REFINER_STRESS_WORKERS: '4'
           PROMPT_REFINER_STRESS_WRITES: '100'
         run: npm run stress:event-store
+      - name: Run abrupt recovery proof
+        run: npm run recovery:event-store:abrupt
+      - name: Run EventStore soak
+        run: npm run stress:event-store:soak
 
   windows:
     runs-on: windows-latest
