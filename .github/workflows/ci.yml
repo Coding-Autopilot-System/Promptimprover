@@ -119,6 +119,7 @@ jobs:
       - run: npm run test:stress
       - run: npm run stress:event-store
       - run: npm run recovery:event-store:abrupt
+      - run: npm run stress:event-store:soak
       - run: npm run acceptance:package-runtime
 
   supply-chain:
