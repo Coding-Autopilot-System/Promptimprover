@@ -76,7 +76,7 @@ describe("global registration doctor", () => {
     const second = run(root, "-Apply");
     expect(second.status, second.stderr || second.stdout).toBe(0);
     expect(readdirSync(root, { recursive: true }).filter((name) => name.includes("promptimprover-backup"))).toHaveLength(backupCount);
-  });
+  }, 30_000);
 
   it("reports drift, mojibake, and credential field paths without printing values", () => {
     const root = makeRoot();

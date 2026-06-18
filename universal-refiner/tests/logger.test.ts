@@ -5,6 +5,7 @@ import * as path from "path";
 import { RuntimeLogger } from "../src/core/logger.js";
 import { REDACTED, containsSensitiveContent, isSensitiveFilename, redact, redactString } from "../src/core/redaction.js";
 
+// secret-scan: allow-fixture
 describe("redaction", () => {
   it("redacts free-form assignments, authorization values, and URL secrets", () => {
     const value = redactString("password=hunter2 Bearer abc.def https://user:pass@example.com/a?token=abc&safe=yes");

@@ -46,4 +46,11 @@ describe("dashboard server startup", () => {
     await CommandCenterDashboard.stop();
     expect(mocks.close).toHaveBeenCalledOnce();
   });
+
+  it("rejects when closing the active dashboard server fails", async () => {
+    mocks.close.mockImplementationOnce((callback?: (error?: Error) => void) => callback?.(new Error("close failed")));
+    CommandCenterDashboard.start(3999, ".");
+
+    await expect(CommandCenterDashboard.stop()).rejects.toThrow("close failed");
+  });
 });
