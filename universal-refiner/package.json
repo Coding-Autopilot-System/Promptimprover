@@ -27,9 +27,10 @@
         "acceptance:semantic": "node scripts/acceptance/semantic-provider-acceptance.mjs",
         "acceptance:gemma:live": "node scripts/acceptance/semantic-provider-acceptance.mjs --require-live",
         "acceptance:tracked-turn": "node scripts/acceptance/tracked-turn-acceptance.mjs",
+        "acceptance:package-runtime": "node scripts/acceptance/package-runtime-smoke.mjs",
         "stress:event-store": "node scripts/stress/event-store-stress.mjs",
         "stress:event-store:soak": "node scripts/stress/event-store-soak.mjs",
-        "release:verify": "npm run build && npm run test:coverage && npm run test:acceptance && npm run acceptance:semantic && npm run acceptance:tracked-turn && npm run test:stress && npm run stress:event-store && npm run recovery:event-store:abrupt && npm run stress:event-store:soak && npm run security:audit && npm run security:secrets && npm run package:check"
+        "release:verify": "npm run build && npm run test:coverage && npm run test:acceptance && npm run acceptance:semantic && npm run acceptance:tracked-turn && npm run test:stress && npm run stress:event-store && npm run recovery:event-store:abrupt && npm run stress:event-store:soak && npm run security:audit && npm run security:secrets && npm run package:check && npm run acceptance:package-runtime"
     },
     "keywords": [
         "mcp",
@@ -45,6 +46,7 @@
         "better-sqlite3": "^12.8.0",
         "chokidar": "^5.0.0",
         "flexsearch": "^0.7.43",
+        "typescript": "^5.9.3",
         "zod": "^4.3.6"
     },
     "devDependencies": {
@@ -52,7 +54,6 @@
         "@types/node": "^22.19.17",
         "@vitest/coverage-v8": "4.1.4",
         "ts-node": "^10.9.2",
-        "typescript": "^5.9.3",
         "vitest": "^4.1.4"
     },
     "repository": {

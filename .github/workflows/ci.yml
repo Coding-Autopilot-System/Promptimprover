@@ -134,6 +134,7 @@ jobs:
       - run: npm run security:secrets
       - run: npm run build
       - run: npm run package:check
+      - run: npm run acceptance:package-runtime
 
   release-gate:
     if: always()
