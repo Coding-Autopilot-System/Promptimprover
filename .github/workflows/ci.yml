@@ -136,6 +136,7 @@ jobs:
           cache-dependency-path: universal-refiner/package-lock.json
       - run: npm ci --no-fund
       - run: npm run security:audit
+      - run: npm run security:audit:all
       - run: npm run security:secrets
       - run: npm run build
       - run: npm run package:check
