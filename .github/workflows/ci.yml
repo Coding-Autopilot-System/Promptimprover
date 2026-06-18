@@ -114,7 +114,12 @@ jobs:
       - run: npm run build
       - run: npm run test:coverage
       - run: npm run test:acceptance
+      - run: npm run acceptance:semantic
+      - run: npm run acceptance:tracked-turn
       - run: npm run test:stress
+      - run: npm run stress:event-store
+      - run: npm run recovery:event-store:abrupt
+      - run: npm run acceptance:package-runtime
 
   supply-chain:
     runs-on: ubuntu-latest
