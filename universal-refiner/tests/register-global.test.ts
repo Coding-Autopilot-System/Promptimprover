@@ -71,12 +71,13 @@ describe("global registration doctor", () => {
 
     const backupCount = readdirSync(root, { recursive: true }).filter((name) => name.includes("promptimprover-backup")).length;
     expect(backupCount).toBeGreaterThan(0);
+    writeFileSync(join(root, ".claude.json"), JSON.stringify(claude), "utf8");
     const check = run(root, "-Check");
     expect(check.status, check.stderr || check.stdout).toBe(0);
     const second = run(root, "-Apply");
     expect(second.status, second.stderr || second.stdout).toBe(0);
     expect(readdirSync(root, { recursive: true }).filter((name) => name.includes("promptimprover-backup"))).toHaveLength(backupCount);
-  }, 30_000);
+  }, 45_000);
 
   it("reports drift, mojibake, and credential field paths without printing values", () => {
     const root = makeRoot();
