@@ -28,7 +28,8 @@ try {
   const bin = process.platform === "win32"
     ? join(prefixDir, "gemini-prompt-refiner.cmd")
     : join(prefixDir, "bin", "gemini-prompt-refiner");
-  const installedEntry = join(prefixDir, "node_modules", "gemini-prompt-refiner", "dist", "src", "index.js");
+  const packageRoot = await findInstalledPackageRoot(prefixDir);
+  const installedEntry = join(packageRoot, "dist", "src", "index.js");
   await access(bin);
   await access(installedEntry);
   const port = await reservePort();
@@ -91,6 +92,29 @@ function runNpm(args) {
   return npmExecPath
     ? runProcess(process.execPath, [npmExecPath, ...args], { cwd: repoRoot, timeoutMs })
     : runProcess(npmCommand, args, { cwd: repoRoot, timeoutMs });
+}
+
+async function findInstalledPackageRoot(prefixDir) {
+  const candidates = process.platform === "win32"
+    ? [
+      join(prefixDir, "node_modules", "gemini-prompt-refiner"),
+      join(prefixDir, "lib", "node_modules", "gemini-prompt-refiner"),
+    ]
+    : [
+      join(prefixDir, "lib", "node_modules", "gemini-prompt-refiner"),
+      join(prefixDir, "node_modules", "gemini-prompt-refiner"),
+    ];
+
+  for (const candidate of candidates) {
+    try {
+      await access(candidate);
+      return candidate;
+    } catch {
+      // Try the next npm global install layout.
+    }
+  }
+
+  throw new Error(`Installed package root not found under npm prefix ${prefixDir}. Tried: ${candidates.join(", ")}`);
 }
 
 async function waitForHealth(port, readLogs, deadlineMs) {

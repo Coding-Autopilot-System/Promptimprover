@@ -8,6 +8,13 @@ import { tmpdir } from "node:os";
 const repoRoot = resolve(import.meta.dirname, "..");
 const script = join(repoRoot, "register-global.ps1");
 const roots: string[] = [];
+const powershell = process.platform === "win32" ? "powershell.exe" : "pwsh";
+const powershellAvailable = spawnSync(
+  powershell,
+  ["-NoProfile", "-Command", "$PSVersionTable.PSVersion.ToString()"],
+  { encoding: "utf8" },
+).status === 0;
+const describeIfPowerShell = powershellAvailable ? describe : describe.skip;
 
 function makeRoot(): string {
   const root = join(tmpdir(), `promptimprover-register-${process.pid}-${Date.now()}-${roots.length}`, "KimHarjamäki");
@@ -17,7 +24,7 @@ function makeRoot(): string {
 }
 
 function run(root: string, mode: "-Check" | "-Apply") {
-  return spawnSync("powershell.exe", [
+  return spawnSync(powershell, [
     "-NoProfile",
     "-ExecutionPolicy", "Bypass",
     "-File", script,
@@ -31,7 +38,7 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-describe("global registration doctor", () => {
+describeIfPowerShell("global registration doctor", () => {
   it("applies idempotent Unicode-safe merges while preserving unrelated config", () => {
     const root = makeRoot();
     mkdirSync(join(root, ".claude"), { recursive: true });
