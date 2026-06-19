@@ -34,7 +34,7 @@ try {
   await access(installedEntry);
   const port = await reservePort();
 
-  runtime = spawn(process.execPath, [installedEntry], {
+  runtime = spawn(bin, [], {
     cwd: runtimeDir,
     env: {
       ...process.env,
@@ -42,6 +42,7 @@ try {
       PROMPT_REFINER_BACKGROUND: "true",
     },
     stdio: ["ignore", "pipe", "pipe"],
+    shell: process.platform === "win32",
     windowsHide: true,
   });
 
@@ -55,11 +56,22 @@ try {
   await waitForHealth(port, () => `${stdout}\n${stderr}`, timeoutMs);
   console.log(`Package runtime smoke passed: installed ${packed[0].name}-${packed[0].version} and served /api/health on ${port}.`);
 } finally {
-  if (runtime && !runtime.killed) {
-    runtime.kill("SIGTERM");
-    await waitForClose(runtime, 5_000);
-  }
+  if (runtime) await terminateRuntime(runtime, 5_000);
   await rm(tempRoot, { recursive: true, force: true });
+}
+
+async function terminateRuntime(child, timeoutMs) {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  if (process.platform === "win32" && child.pid) {
+    const killer = spawn("taskkill", ["/pid", String(child.pid), "/t", "/f"], {
+      stdio: "ignore",
+      windowsHide: true,
+    });
+    await waitForClose(killer, timeoutMs);
+  } else {
+    child.kill("SIGTERM");
+  }
+  await waitForClose(child, timeoutMs);
 }
 
 async function waitForClose(child, timeoutMs) {
