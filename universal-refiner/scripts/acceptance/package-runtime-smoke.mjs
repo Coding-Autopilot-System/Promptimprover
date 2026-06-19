@@ -12,6 +12,8 @@ const tempRoot = await mkdtemp(join(tmpdir(), "prompt-refiner-package-smoke-"));
 const packageDir = join(tempRoot, "package");
 const prefixDir = join(tempRoot, "prefix");
 const runtimeDir = join(tempRoot, "runtime");
+const stateDir = join(tempRoot, "state");
+const homeDir = join(tempRoot, "home");
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 const npmExecPath = process.env.npm_execpath;
 let runtime;
@@ -19,6 +21,8 @@ let runtime;
 try {
   await mkdir(packageDir, { recursive: true });
   await mkdir(runtimeDir, { recursive: true });
+  await mkdir(stateDir, { recursive: true });
+  await mkdir(homeDir, { recursive: true });
   const packOutput = await runNpm(["pack", "--json", "--pack-destination", packageDir]);
   const packed = JSON.parse(packOutput.stdout);
   const tarball = join(packageDir, packed[0].filename);
@@ -38,8 +42,11 @@ try {
     cwd: runtimeDir,
     env: {
       ...process.env,
+      HOME: homeDir,
       PORT: String(port),
       PROMPT_REFINER_BACKGROUND: "true",
+      PROMPT_REFINER_GLOBAL_DIR: stateDir,
+      USERPROFILE: homeDir,
     },
     stdio: ["ignore", "pipe", "pipe"],
     shell: process.platform === "win32",
