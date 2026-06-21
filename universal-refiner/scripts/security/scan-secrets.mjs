@@ -6,10 +6,18 @@ const PATTERNS = [
   { name: "OpenAI API key", expression: /\bsk-[A-Za-z0-9_-]{20,}\b/g },
   { name: "Azure storage connection string", expression: /\bDefaultEndpointsProtocol=https?;AccountName=[^;\s]+;AccountKey=[^;\s]+/gi },
   { name: "Private key", expression: /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/g },
+  {
+    name: "Credential assignment",
+    expression: /\b(?:authorization|password|passwd|pwd|secret|client[_-]?secret|access[_-]?token|refresh[_-]?token|api[_-]?key|x-api-key|private[_-]?key|connection[_-]?string|accountkey|sig|token|aws[_-]?(?:access[_-]?key[_-]?id|secret[_-]?access[_-]?key)|azure[_-]?client[_-]?secret|openai[_-]?api[_-]?key|github[_-]?token|gitlab[_-]?token|database[_-]?url|redis[_-]?url)\b\s*[:=]\s*(?:(["'])[^"'\r\n]{8,}\1|[A-Za-z0-9._~+/=-]{16,})/gi,
+  },
+  {
+    name: "URL embedded credential",
+    expression: /\b[a-z][a-z0-9+.-]*:\/\/(?:[^/\s:@]+:[^@\s]+@|[^\s?#]+[?&](?:password|secret|client[_-]?secret|access[_-]?token|refresh[_-]?token|api[_-]?key|x-api-key|accountkey|sig|token)=)/gi,
+  },
 ];
 
 const ALLOWED_FIXTURE_MARKER = "secret-scan: allow-fixture";
-const files = execFileSync("git", ["ls-files", "-z"], { encoding: "utf8" })
+const files = execFileSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard"], { encoding: "utf8" })
   .split("\0")
   .filter(Boolean);
 const findings = [];
@@ -34,4 +42,4 @@ if (findings.length > 0) {
   process.exit(1);
 }
 
-console.log(`Secret scan passed for ${files.length} tracked files.`);
+console.log(`Secret scan passed for ${files.length} tracked and untracked non-ignored files.`);

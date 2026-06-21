@@ -84,6 +84,23 @@ describe("MCP all-tool acceptance", () => {
     });
   });
 
+  it("generates collision-resistant prompt IDs for concurrent lint calls", async () => {
+    handlers.length = 0;
+    new PromptRefinerServer(directory);
+    const dispatch = handlers[1] as (request: unknown) => Promise<{ content: Array<{ type: string; text: string }> }>;
+
+    const [first, second] = await Promise.all([
+      dispatch({ params: { name: "lint_prompt", arguments: { prompt: "Implement A", semantic: false } } }),
+      dispatch({ params: { name: "lint_prompt", arguments: { prompt: "Implement B", semantic: false } } }),
+    ]);
+    const firstBody = JSON.parse(first.content[0].text) as { promptId: string };
+    const secondBody = JSON.parse(second.content[0].text) as { promptId: string };
+
+    expect(firstBody.promptId).toMatch(/^prm_[0-9a-f-]{36}$/u);
+    expect(secondBody.promptId).toMatch(/^prm_[0-9a-f-]{36}$/u);
+    expect(firstBody.promptId).not.toBe(secondBody.promptId);
+  });
+
   it("executes every advertised dispatcher path with valid arguments", async () => {
     handlers.length = 0;
     const server = new PromptRefinerServer(directory);

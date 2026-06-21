@@ -2,7 +2,7 @@
 param(
     [switch]$Check,
     [switch]$Apply,
-    [string]$ProfileRoot = ("C:\Users\KimHarjam{0}ki" -f [char]0x00E4),
+    [string]$ProfileRoot = "C:\Users\KimHarjamaki",
     [string]$CodexHome,
     [string]$ObsidianVaultPath = "C:\repo\global.obsidian"
 )
@@ -214,6 +214,7 @@ function Update-JsonConfig {
     )
 
     $config = Read-JsonConfig $Path
+    $originalFingerprint = $config | ConvertTo-Json -Depth 100 -Compress
     if ($Servers.Count -gt 0) {
         if (-not $config.Contains("mcpServers") -or -not ($config["mcpServers"] -is [System.Collections.IDictionary])) {
             $config["mcpServers"] = [ordered]@{}
@@ -227,8 +228,9 @@ function Update-JsonConfig {
     }
 
     $desiredContent = ConvertTo-StableJson $config
+    $desiredFingerprint = $config | ConvertTo-Json -Depth 100 -Compress
     $currentContent = if (Test-Path -LiteralPath $Path) { [System.IO.File]::ReadAllText($Path) } else { "" }
-    if ($currentContent -ceq $desiredContent) {
+    if (($currentContent -ceq $desiredContent) -or ($originalFingerprint -ceq $desiredFingerprint)) {
         Write-Host "OK      $Name"
         return
     }
