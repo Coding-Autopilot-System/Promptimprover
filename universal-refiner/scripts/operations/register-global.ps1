@@ -320,6 +320,8 @@ $profile = Resolve-NormalizedPath $ProfileRoot
 $repoRoot = Resolve-NormalizedPath (Join-Path $PSScriptRoot "..\..")
 $serverPath = ConvertTo-ConfigPath (Join-Path $repoRoot "dist\src\index.js")
 $vaultPath = ConvertTo-ConfigPath $ObsidianVaultPath
+$isWindowsHost = $env:OS -eq "Windows_NT" -or [System.IO.Path]::DirectorySeparatorChar -eq "\"
+$npxCommand = if ($isWindowsHost) { "npx.cmd" } else { "npx" }
 
 if ([string]::IsNullOrWhiteSpace($CodexHome)) {
     if (-not $PSBoundParameters.ContainsKey("ProfileRoot") -and -not [string]::IsNullOrWhiteSpace($env:CODEX_HOME)) {
@@ -336,7 +338,7 @@ $servers = [ordered]@{
         args = @($serverPath)
     }
     "obsidian" = [ordered]@{
-        command = "npx"
+        command = $npxCommand
         args = @("-y", "@bitbonsai/mcpvault@latest", $vaultPath)
     }
 }

@@ -50,6 +50,14 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\register-global.ps1 -A
 
 ## 4. List MCP Servers In Each CLI
 
+Use the canonical Windows profile when testing global CLI configuration. This avoids the accented-profile drift that can make a CLI read stale user-level settings:
+
+```powershell
+$env:USERPROFILE = 'C:\Users\KimHarjamaki'
+$env:HOME = 'C:\Users\KimHarjamaki'
+$env:AZURE_CONFIG_DIR = 'C:\Users\KimHarjamaki\.azure'
+```
+
 ```powershell
 codex.cmd mcp list | Select-String -Pattern 'prompt-refiner|obsidian|Connected|enabled'
 claude.cmd mcp list | Select-String -Pattern 'prompt-refiner|obsidian|Connected|Configured'
@@ -63,6 +71,10 @@ Expected result:
 - Gemini lists `prompt-refiner` and `obsidian` as connected.
 
 Codex may show `Unsupported` in the status column for stdio MCP entries. Treat the registration doctor as the authoritative config drift check.
+
+On Windows, Obsidian MCP must be registered with `npx.cmd`, not `npx`. `npx` can resolve to the PowerShell shim (`npx.ps1`) and fail under the default execution policy.
+
+Gemini can report MCP servers as disabled when the current folder is untrusted. Start Gemini from the repo once with `--skip-trust` or accept the workspace trust prompt. Gemini also requires its own auth setup (`GEMINI_API_KEY`, Vertex AI, or Gemini Code Assist) before a trusted full CLI session can start.
 
 ## 5. Verify Dashboard Runtime Health
 
