@@ -92,6 +92,11 @@ describe("PromptRefinerServer", () => {
     await background.stop();
     expect(lifecycle.backgroundStop).toHaveBeenCalledOnce();
     expect(lifecycle.backgroundIdle).toHaveBeenCalledOnce();
+
+    const closing = new PromptRefinerServer(".");
+    await closing.run();
+    lifecycle.close.mockRejectedValueOnce(new Error("close failed"));
+    await expect(closing.stop()).resolves.toBeUndefined();
   });
 
   it("handles MCP sampling text, non-text, unsupported, and transient failures", async () => {

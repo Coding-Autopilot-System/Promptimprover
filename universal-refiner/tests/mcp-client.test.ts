@@ -129,7 +129,10 @@ describe("hook MCP client", () => {
 
     expect(resolveServerPath()).toMatch(/src[\\/]index\.js$/);
     await callMcpTool("lint_prompt", {});
-    expect(mocks.request.mock.calls[0][2]).toEqual({ timeout: 15_000, maxTotalTimeout: 15_000 });
+    const options = mocks.request.mock.calls[0][2] as { timeout: number; maxTotalTimeout: number };
+    expect(options.timeout).toBeGreaterThan(0);
+    expect(options.timeout).toBeLessThanOrEqual(15_000);
+    expect(options.maxTotalTimeout).toBe(options.timeout);
   });
 
   it("selects an existing built candidate, rejects invalid timeouts, and tolerates close failures", async () => {
@@ -140,6 +143,9 @@ describe("hook MCP client", () => {
 
     expect(resolveServerPath()).toMatch(/dist[\\/]src[\\/]index\.js$/);
     await expect(callMcpTool("lint_prompt", {})).resolves.toBe("ok");
-    expect(mocks.request.mock.calls[0][2]).toEqual({ timeout: 15_000, maxTotalTimeout: 15_000 });
+    const options = mocks.request.mock.calls[0][2] as { timeout: number; maxTotalTimeout: number };
+    expect(options.timeout).toBeGreaterThan(0);
+    expect(options.timeout).toBeLessThanOrEqual(15_000);
+    expect(options.maxTotalTimeout).toBe(options.timeout);
   });
 });

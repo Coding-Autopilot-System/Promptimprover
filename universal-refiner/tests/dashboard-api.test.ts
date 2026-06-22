@@ -1,3 +1,4 @@
+// secret-scan: allow-fixture
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import * as fs from "fs";
 import * as os from "os";

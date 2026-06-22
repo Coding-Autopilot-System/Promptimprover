@@ -65,6 +65,8 @@ jobs:
           PROMPT_REFINER_PRIMARY_MODEL: ${{ matrix.model-order == 'primary' && 'gemma3:12b' || 'gemma3:1b' }}
           PROMPT_REFINER_FALLBACK_MODEL: ${{ matrix.model-order == 'primary' && 'gemma3:1b' || 'gemma3:12b' }}
         run: npm run acceptance:semantic
+      - name: Run tracked-turn acceptance
+        run: npm run acceptance:tracked-turn
 
   stress:
     runs-on: ubuntu-latest
@@ -89,6 +91,10 @@ jobs:
           PROMPT_REFINER_STRESS_WORKERS: '4'
           PROMPT_REFINER_STRESS_WRITES: '100'
         run: npm run stress:event-store
+      - name: Run abrupt recovery proof
+        run: npm run recovery:event-store:abrupt
+      - name: Run EventStore soak
+        run: npm run stress:event-store:soak
 
   windows:
     runs-on: windows-latest
@@ -108,7 +114,13 @@ jobs:
       - run: npm run build
       - run: npm run test:coverage
       - run: npm run test:acceptance
+      - run: npm run acceptance:semantic
+      - run: npm run acceptance:tracked-turn
       - run: npm run test:stress
+      - run: npm run stress:event-store
+      - run: npm run recovery:event-store:abrupt
+      - run: npm run stress:event-store:soak
+      - run: npm run acceptance:package-runtime
 
   supply-chain:
     runs-on: ubuntu-latest
@@ -125,9 +137,11 @@ jobs:
           cache-dependency-path: universal-refiner/package-lock.json
       - run: npm ci --no-fund
       - run: npm run security:audit
+      - run: npm run security:audit:all
       - run: npm run security:secrets
       - run: npm run build
       - run: npm run package:check
+      - run: npm run acceptance:package-runtime
 
   release-gate:
     if: always()

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -67,5 +67,18 @@ describe("/api/autopilot dashboard route (AUTO-05, AUTO-06)", () => {
     const res = await app.request("/api/autopilot");
     const body = await res.json() as { lastCycleAt: string | null };
     expect(body.lastCycleAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it("returns a sanitized autopilot route failure", async () => {
+    vi.spyOn(AutoPilotStatus, "getSnapshot").mockImplementationOnce(() => {
+      throw new Error("autopilot secret");
+    });
+    const app = CommandCenterDashboard.createApp(testDir);
+
+    const res = await app.request("/api/autopilot");
+    const body = await res.json() as { error: string };
+
+    expect(res.status).toBe(500);
+    expect(body.error).toBe("Auto-pilot status unavailable");
   });
 });

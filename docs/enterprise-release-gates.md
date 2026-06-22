@@ -19,8 +19,8 @@ Passing unit tests alone does not prove that PromptImprover is operationally rea
 6. SQLite restart, migration, backup/restore, contention, and multi-process tests pass.
 7. Claude and Gemini hook pre/post flows pass; Codex MCP-first flow passes.
 8. Dashboard API security, review mutation, health telemetry, and browser smoke flows pass.
-9. Dependency audit reports no known production vulnerabilities.
-10. Package dry-run, global installation, runtime startup, and post-restart smoke tests pass.
+9. Dependency audit reports no known production or development vulnerabilities at high severity or above.
+10. Package dry-run plus `acceptance:package-runtime` global installation, runtime startup, and health smoke tests pass.
 11. Secret scanning finds no committed credentials.
 12. Linux and Windows CI jobs pass before merge.
 
