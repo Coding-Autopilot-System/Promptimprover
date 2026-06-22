@@ -37,6 +37,7 @@ import { parseStructuredResponse } from "./structured-response.js";
 import { RepositoryIdentity } from "../history/repository-identity.js";
 import { ApprovedTemplateSelector } from "../refiners/template-selector.js";
 import { createABEvaluationRecord, evaluatePrompt } from "../evaluation/prompt-evaluator.js";
+import { randomUUID } from "node:crypto";
 
 export class PromptRefinerServer {
   private server: Server;
@@ -458,7 +459,7 @@ Output ONLY the JSON array. If no gaps, return [].`,
             AgenticBlackboard.postIntent(agentName, "lint", prompt, this.rootPath);
             CommandCenterDashboard.log(`Scouting project for prompt: "${prompt.substring(0, 30)}..."`);
 
-            const promptId = `prm_${Date.now()}`;
+            const promptId = `prm_${randomUUID()}`;
             this.eventStore.recordPrompt({
               id: promptId,
               client: "MCP",
@@ -492,7 +493,7 @@ Output ONLY the JSON array. If no gaps, return [].`,
             AgenticBlackboard.postIntent(agentName, "finalize", original_prompt, this.rootPath);
 
             const ctx = await this.scoutProject(original_prompt);
-            const promptId = `ref_${Date.now()}`;
+            const promptId = `ref_${randomUUID()}`;
             const approvedTemplates = await this.templateSelector.select({
               repoId: this.repository.id,
               prompt: original_prompt,
@@ -664,7 +665,7 @@ Output ONLY the JSON array. If no gaps, return [].`,
             const now = new Date().toISOString();
 
             if (!execution) {
-              const execId = `exec_${Date.now()}`;
+              const execId = `exec_${randomUUID()}`;
               this.eventStore.recordExecution({
                 id: execId,
                 prompt_id: prompt_id,
@@ -711,7 +712,7 @@ Output ONLY the JSON array. If no gaps, return [].`,
               outcome_b: outcomeSchema.optional(),
             }).parse(request.params.arguments);
             const experiment = createABEvaluationRecord({
-              experimentId: `exp_${Date.now()}`,
+              experimentId: `exp_${randomUUID()}`,
               baselinePrompt: baseline_prompt,
               variantA: { id: "A", prompt: variant_a, observedOutcome: outcome_a },
               variantB: { id: "B", prompt: variant_b, observedOutcome: outcome_b },

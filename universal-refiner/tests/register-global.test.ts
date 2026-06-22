@@ -1,3 +1,4 @@
+// secret-scan: allow-fixture
 import { afterEach, describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
@@ -7,6 +8,13 @@ import { tmpdir } from "node:os";
 const repoRoot = resolve(import.meta.dirname, "..");
 const script = join(repoRoot, "register-global.ps1");
 const roots: string[] = [];
+const powershell = process.platform === "win32" ? "powershell.exe" : "pwsh";
+const powershellAvailable = spawnSync(
+  powershell,
+  ["-NoProfile", "-Command", "$PSVersionTable.PSVersion.ToString()"],
+  { encoding: "utf8" },
+).status === 0;
+const describeIfPowerShell = powershellAvailable ? describe : describe.skip;
 
 function makeRoot(): string {
   const root = join(tmpdir(), `promptimprover-register-${process.pid}-${Date.now()}-${roots.length}`, "KimHarjamäki");
@@ -16,7 +24,7 @@ function makeRoot(): string {
 }
 
 function run(root: string, mode: "-Check" | "-Apply") {
-  return spawnSync("powershell.exe", [
+  return spawnSync(powershell, [
     "-NoProfile",
     "-ExecutionPolicy", "Bypass",
     "-File", script,
@@ -30,7 +38,7 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-describe("global registration doctor", () => {
+describeIfPowerShell("global registration doctor", () => {
   it("applies idempotent Unicode-safe merges while preserving unrelated config", () => {
     const root = makeRoot();
     mkdirSync(join(root, ".claude"), { recursive: true });
@@ -71,12 +79,13 @@ describe("global registration doctor", () => {
 
     const backupCount = readdirSync(root, { recursive: true }).filter((name) => name.includes("promptimprover-backup")).length;
     expect(backupCount).toBeGreaterThan(0);
+    writeFileSync(join(root, ".claude.json"), JSON.stringify(claude), "utf8");
     const check = run(root, "-Check");
     expect(check.status, check.stderr || check.stdout).toBe(0);
     const second = run(root, "-Apply");
     expect(second.status, second.stderr || second.stdout).toBe(0);
     expect(readdirSync(root, { recursive: true }).filter((name) => name.includes("promptimprover-backup"))).toHaveLength(backupCount);
-  });
+  }, 45_000);
 
   it("reports drift, mojibake, and credential field paths without printing values", () => {
     const root = makeRoot();

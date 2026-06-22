@@ -32,6 +32,7 @@ vi.mock("../src/history/git-poller.js", () => ({
 }));
 
 import { BackgroundAutonomyService } from "../src/core/background-service.js";
+import { AutoPilotStatus } from "../src/core/autopilot-status.js";
 
 describe("BackgroundAutonomyService", () => {
   beforeEach(() => {
@@ -41,6 +42,7 @@ describe("BackgroundAutonomyService", () => {
     mocks.ingest.mockResolvedValue(2);
     mocks.correlate.mockResolvedValue(undefined);
     mocks.extract.mockResolvedValue(undefined);
+    AutoPilotStatus.reset();
   });
 
   it("starts once, runs the initial serialized cycle, and stops the watcher", async () => {
@@ -66,6 +68,31 @@ describe("BackgroundAutonomyService", () => {
     expect(mocks.error).toHaveBeenCalledWith("Background autonomy watcher failed", expect.any(Error));
   });
 
+  it("completes a cycle when no commits or lessons are discovered", async () => {
+    mocks.ingest.mockResolvedValue(0);
+    const service = new BackgroundAutonomyService("C:/repo", vi.fn());
+
+    service.start();
+    await service.idle();
+    service.stop();
+
+    expect(mocks.dashboard).toHaveBeenCalledWith("Background Autonomy: Ingested 0 commits.");
+    expect(AutoPilotStatus.getSnapshot().stats.commitsIngested).toBe(0);
+  });
+
+  it("records extracted lesson activity when extraction increments the counter", async () => {
+    mocks.extract.mockImplementation(async () => {
+      AutoPilotStatus.addLessons(2);
+    });
+    const service = new BackgroundAutonomyService("C:/repo", vi.fn());
+
+    service.start();
+    await service.idle();
+    service.stop();
+
+    expect(AutoPilotStatus.getSnapshot().activity.some(activity => activity.kind === "lesson")).toBe(true);
+  });
+
   it("debounces file changes and logs cycle failures for queue retries", async () => {
     vi.useFakeTimers();
     mocks.correlate.mockRejectedValue(new Error("correlation failed"));
@@ -81,6 +108,17 @@ describe("BackgroundAutonomyService", () => {
 
     expect(mocks.debug).toHaveBeenCalledWith(expect.stringContaining("src/b.ts"));
     expect(mocks.error).toHaveBeenCalledWith("Background Autonomy cycle failed", expect.any(Error));
+  });
+
+  it("records non-Error cycle failures", async () => {
+    mocks.correlate.mockRejectedValue("correlation failed");
+    const service = new BackgroundAutonomyService("C:/repo", vi.fn());
+
+    service.start();
+    await service.idle();
+    service.stop();
+
+    expect(AutoPilotStatus.getSnapshot().activity.some(activity => activity.message === "Cycle failed: correlation failed")).toBe(true);
   });
 
   it("starts and stops git polling and reacts to discovered commits", async () => {

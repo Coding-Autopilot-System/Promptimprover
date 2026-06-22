@@ -2,7 +2,7 @@
 param(
     [switch]$Check,
     [switch]$Apply,
-    [string]$ProfileRoot = ("C:\Users\KimHarjam{0}ki" -f [char]0x00E4),
+    [string]$ProfileRoot = "C:\Users\KimHarjamaki",
     [string]$CodexHome,
     [string]$ObsidianVaultPath = "C:\repo\global.obsidian"
 )
