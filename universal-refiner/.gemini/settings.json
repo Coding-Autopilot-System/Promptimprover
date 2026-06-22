@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "prompt-refiner": {
-      "command": "gemini-prompt-refiner",
+      "command": "universal-refiner",
       "args": []
     }
   }

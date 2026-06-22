@@ -116,7 +116,7 @@ describe("dashboard review and health APIs", () => {
   });
 
   it("returns sanitized semantic provider and runtime health", async () => {
-    fs.writeFileSync(path.join(repoDir, ".gemini-refiner.json"), JSON.stringify({
+    fs.writeFileSync(path.join(repoDir, ".universal-refiner.json"), JSON.stringify({
       semantic: {
         baseUrl: "http://secret-user:secret-pass@localhost:9000/v1?token=secret",
         models: ["gemma3:12b"],

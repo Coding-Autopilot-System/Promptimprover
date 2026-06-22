@@ -7,6 +7,8 @@
 # Runtime state and local databases
 .refiner/
 **/.refiner/
+.claude/worktrees/
+**/.claude/worktrees/
 .gemini/memory.json
 **/.gemini/memory.json
 **/.gemini/blackboard.json
@@ -19,6 +21,10 @@
 .env
 .env.*
 !.env.example
+.gemini-refiner.json
+.universal-refiner.json
+**/.gemini-refiner.json
+**/.universal-refiner.json
 
 # Editor and OS artifacts
 .vscode/

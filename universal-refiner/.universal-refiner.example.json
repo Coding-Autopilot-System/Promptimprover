@@ -1,0 +1,18 @@
+{
+  "_comment_usage": "Copy this file to .universal-refiner.json in the universal-refiner directory. ConfigManager reads .universal-refiner.json at server startup; restart the MCP server after changes.",
+  "_comment_fields": {
+    "semantic.localEnabled": "true = LocalOpenAiProvider is tried first. false = skip local model entirely.",
+    "semantic.baseUrl": "OpenAI-compatible /v1 base URL. Ollama default: http://localhost:11434/v1. LM Studio default: http://localhost:1234/v1.",
+    "semantic.models": "Model names to try in order. First reachable model wins. Use exact Ollama model tags.",
+    "semantic.mcpSamplingEnabled": "true = fall back to MCP sampling if local model fails or is unreachable.",
+    "semantic.allowNonLoopback": "Set to true only if baseUrl is a non-loopback host. Leave false for localhost."
+  },
+  "semantic": {
+    "localEnabled": true,
+    "baseUrl": "http://localhost:11434/v1",
+    "models": ["gemma3:12b", "gemma3"],
+    "mcpSamplingEnabled": true,
+    "timeoutMs": 120000,
+    "temperature": 0.2
+  }
+}

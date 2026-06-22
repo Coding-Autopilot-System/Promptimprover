@@ -6,6 +6,8 @@ export interface TimelineEntry {
   timestamp: string;
   summary: string;
   author?: string;
+  event_type?: string;
+  severity?: string;
   details?: any;
 }
 
@@ -35,12 +37,12 @@ export class TimelineProvider {
 
     // Filter out prompt_recorded events because we already have the prompt record itself
     const events = db.prepare(`
-      SELECT 'log' as type, id, timestamp, summary, event_type as author, details_json as details
-      FROM events
-      WHERE event_type NOT IN ('prompt_recorded', 'prompt_processed')
-      ORDER BY timestamp DESC
-      LIMIT ?
-    `).all(limit);
+        SELECT 'log' as type, id, timestamp, summary, event_type as author, event_type, severity, details_json as details
+        FROM events
+        WHERE event_type NOT IN ('prompt_recorded', 'prompt_processed')
+        ORDER BY timestamp DESC
+        LIMIT ?
+      `).all(limit);
 
     const unified: TimelineEntry[] = [
       ...prompts.map((p: any) => ({ ...p, details: { intent: p.details } })),

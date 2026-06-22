@@ -38,14 +38,18 @@ export class NeuralSnippets {
     const files = fs.readdirSync(dir, { withFileTypes: true });
     for (const file of files) {
       const name = path.join(dir, file.name);
-      const stat = fs.lstatSync(name);
-      if (stat.isSymbolicLink()) continue;
-
-      const canonicalName = fs.realpathSync.native(name);
-      if (!this.isWithinRoot(root, canonicalName)) continue;
+      let canonicalName: string;
+      try {
+        const stat = fs.lstatSync(name);
+        if (stat.isSymbolicLink()) continue;
+        canonicalName = fs.realpathSync.native(name);
+        if (!this.isWithinRoot(root, canonicalName)) continue;
+      } catch (err) {
+        continue;
+      }
 
       if (file.isDirectory()) {
-        const ignoreDirs = ["node_modules", "dist", "build", "out", "coverage", "tests", "test"];
+        const ignoreDirs = ["node_modules", "dist", "build", "out", "coverage", "tests", "test", ".git", ".pytest_cache", ".venv", ".sandbox", "tmp"];
         if (!ignoreDirs.includes(file.name) && !file.name.startsWith(".")) {
           await this.walkDir(canonicalName, root, fileList);
         }

@@ -5,7 +5,7 @@ PromptImprover ships fail-open pre-prompt and post-execution helpers:
 - `promptimprover-hook-pre` makes one latency-safe rule-based `lint_prompt` call, creates a trackable prompt ID, and injects advisory context. Interactive MCP linting continues to use semantic providers by default.
 - `promptimprover-hook-post` records privacy-safe completion metadata with `record_agent_output`.
 
-Both commands read hook JSON from stdin, write JSON only to stdout, report failures to stderr, and always allow the client to continue. They start the same built MCP server used by `gemini-prompt-refiner`. Set `PROMPTIMPROVER_SERVER_PATH` only when testing a nonstandard build.
+Both commands read hook JSON from stdin, write JSON only to stdout, report failures to stderr, and always allow the client to continue. They start the same built MCP server used by `universal-refiner`. Set `PROMPTIMPROVER_SERVER_PATH` only when testing a nonstandard build.
 
 The helpers store only prompt ID, client name, and creation time in the OS temporary directory. They do not persist prompt or response bodies. Completion records contain output length rather than response text.
 

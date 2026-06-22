@@ -1,10 +1,10 @@
 {
-    "name": "gemini-prompt-refiner",
+    "name": "universal-refiner",
     "version": "8.0.0",
     "description": "Cross-CLI prompt refinement using an MCP server.",
     "main": "dist/src/index.js",
     "bin": {
-        "gemini-prompt-refiner": "./dist/src/index.js",
+        "universal-refiner": "./dist/src/index.js",
         "promptimprover-hook-pre": "./dist/hooks/pre-prompt.js",
         "promptimprover-hook-post": "./dist/hooks/post-execution.js"
     },

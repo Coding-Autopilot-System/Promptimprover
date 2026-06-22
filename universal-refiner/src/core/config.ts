@@ -19,7 +19,8 @@ export interface SemanticConfig {
 }
 
 export class ConfigManager {
-  private static CONFIG_FILE = ".gemini-refiner.json";
+  private static CONFIG_FILE = ".universal-refiner.json";
+  private static LEGACY_CONFIG_FILE = ".gemini-refiner.json";
   private static DEFAULT_SEMANTIC_CONFIG: SemanticConfig = {
     localEnabled: true,
     mcpSamplingEnabled: true,
@@ -31,7 +32,7 @@ export class ConfigManager {
   };
 
   static loadConfig(rootPath: string = "."): RefinerConfig {
-    const configPath = path.join(rootPath, this.CONFIG_FILE);
+    const configPath = this.resolveConfigPath(rootPath);
     if (!fs.existsSync(configPath)) {
       return {};
     }
@@ -43,6 +44,28 @@ export class ConfigManager {
       console.error(`Error loading config from ${configPath}:`, e);
       return {};
     }
+  }
+
+  private static resolveConfigPath(rootPath: string): string {
+    const configPath = path.join(rootPath, this.CONFIG_FILE);
+    if (fs.existsSync(configPath)) {
+      return configPath;
+    }
+
+    const legacyPath = path.join(rootPath, this.LEGACY_CONFIG_FILE);
+    if (fs.existsSync(legacyPath)) {
+      console.warn(`${this.LEGACY_CONFIG_FILE} is deprecated; rename it to ${this.CONFIG_FILE}.`);
+      return legacyPath;
+    }
+
+    return configPath;
+  }
+
+  static mergeConfig(rootPath: string = ".", updates: Partial<RefinerConfig>): void {
+    const configPath = path.join(rootPath, this.CONFIG_FILE);
+    const current = this.loadConfig(rootPath);
+    const merged = { ...current, ...updates };
+    fs.writeFileSync(configPath, JSON.stringify(merged, null, 2), "utf-8");
   }
 
   static getSemanticConfig(rootPath: string = "."): SemanticConfig {

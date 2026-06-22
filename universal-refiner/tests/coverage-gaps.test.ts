@@ -17,7 +17,7 @@ describe("ConfigManager gap coverage", () => {
 
   it("returns an empty object when the repository config contains invalid JSON", async () => {
     const { ConfigManager } = await import("../src/core/config.js");
-    fs.writeFileSync(path.join(tmpDir, ".gemini-refiner.json"), "{ NOT VALID JSON }");
+    fs.writeFileSync(path.join(tmpDir, ".universal-refiner.json"), "{ NOT VALID JSON }");
 
     expect(ConfigManager.loadConfig(tmpDir)).toEqual({});
   });

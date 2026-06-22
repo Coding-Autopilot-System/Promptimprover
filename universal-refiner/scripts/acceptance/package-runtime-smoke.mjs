@@ -30,8 +30,8 @@ try {
   await runNpm(["install", "--global", "--prefix", prefixDir, "--no-fund", tarball]);
 
   const bin = process.platform === "win32"
-    ? join(prefixDir, "gemini-prompt-refiner.cmd")
-    : join(prefixDir, "bin", "gemini-prompt-refiner");
+    ? join(prefixDir, "universal-refiner.cmd")
+    : join(prefixDir, "bin", "universal-refiner");
   const packageRoot = await findInstalledPackageRoot(prefixDir);
   const installedEntry = join(packageRoot, "dist", "src", "index.js");
   await access(bin);
@@ -116,12 +116,12 @@ function runNpm(args) {
 async function findInstalledPackageRoot(prefixDir) {
   const candidates = process.platform === "win32"
     ? [
-      join(prefixDir, "node_modules", "gemini-prompt-refiner"),
-      join(prefixDir, "lib", "node_modules", "gemini-prompt-refiner"),
+      join(prefixDir, "node_modules", "universal-refiner"),
+      join(prefixDir, "lib", "node_modules", "universal-refiner"),
     ]
     : [
-      join(prefixDir, "lib", "node_modules", "gemini-prompt-refiner"),
-      join(prefixDir, "node_modules", "gemini-prompt-refiner"),
+      join(prefixDir, "lib", "node_modules", "universal-refiner"),
+      join(prefixDir, "node_modules", "universal-refiner"),
     ];
 
   for (const candidate of candidates) {
