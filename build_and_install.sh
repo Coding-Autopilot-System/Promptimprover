@@ -11,6 +11,6 @@ npm test
 npm run build
 npm install --global . --no-fund
 
-command -v gemini-prompt-refiner >/dev/null 2>&1
+command -v universal-refiner >/dev/null 2>&1
 VERSION=$(node -p "require('./package.json').version")
-printf 'Prompt Refiner v%s installed: %s\n' "$VERSION" "$(command -v gemini-prompt-refiner)"
+printf 'Prompt Refiner v%s installed: %s\n' "$VERSION" "$(command -v universal-refiner)"

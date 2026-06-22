@@ -13,7 +13,7 @@ try {
     npm install --global . --no-fund
 
     $package = Get-Content .\package.json -Raw | ConvertFrom-Json
-    $command = Get-Command gemini-prompt-refiner -ErrorAction Stop
+    $command = Get-Command universal-refiner -ErrorAction Stop
     Write-Host "Prompt Refiner v$($package.version) installed: $($command.Source)" -ForegroundColor Green
 }
 finally {

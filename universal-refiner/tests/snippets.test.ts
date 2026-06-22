@@ -1,5 +1,5 @@
 // secret-scan: allow-fixture
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
@@ -97,5 +97,25 @@ def helper():
       (NeuralSnippets as any).walkDir = originalWalkDir;
       fs.rmSync(outside, { recursive: true, force: true });
     }
+  });
+
+  it("skips entries when canonical path resolution fails", async () => {
+    const safeFile = path.join(tmpDir, "safe.ts");
+    const brokenFile = path.join(tmpDir, "broken.ts");
+    fs.writeFileSync(safeFile, "export function safeResolution() {}");
+    fs.writeFileSync(brokenFile, "export function brokenResolution() {}");
+
+    const originalRealpath = fs.realpathSync.native;
+    vi.spyOn(fs.realpathSync, "native").mockImplementation((target) => {
+      if (String(target).endsWith("broken.ts")) {
+        throw new Error("transient filesystem error");
+      }
+      return originalRealpath(target);
+    });
+
+    await NeuralSnippets.initialize(tmpDir);
+
+    expect(await NeuralSnippets.search("safeResolution", tmpDir)).toMatchObject([{ symbolName: "safeResolution" }]);
+    expect(await NeuralSnippets.search("brokenResolution", tmpDir)).toEqual([]);
   });
 });

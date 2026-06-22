@@ -67,6 +67,7 @@ export class LocalOpenAiProvider implements SemanticProvider {
             stream: false,
             temperature: this.options.temperature,
             max_tokens: request.maxTokens,
+            keep_alive: -1,
           }),
           signal: AbortSignal.timeout(this.options.timeoutMs),
         });

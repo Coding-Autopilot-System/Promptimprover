@@ -127,7 +127,7 @@ npm.cmd run acceptance:package-runtime
 Expected result:
 
 ```text
-Package runtime smoke passed: installed gemini-prompt-refiner-8.0.0 and served /api/health on <port>.
+Package runtime smoke passed: installed universal-refiner-8.0.0 and served /api/health on <port>.
 ```
 
 This catches missing production dependencies that are hidden by the local workspace.

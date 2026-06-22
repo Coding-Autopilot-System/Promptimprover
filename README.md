@@ -42,7 +42,7 @@ That distinction matters because this repo is about credible system direction, n
 
 ```mermaid
 flowchart LR
-    CLI["AI CLI\n(Claude / Cursor)"] -->|"stdio"| PI["PromptImprover\n(gemini-prompt-refiner)"]
+    CLI["AI CLI\n(Claude / Cursor)"] -->|"stdio"| PI["PromptImprover\n(universal-refiner)"]
     subgraph internal["PromptImprover Engine"]
         RAG["RAG Snippets\n(FlexSearch)"]
         Memory["SQLite Memory\n(LocalBrain)"]
@@ -77,7 +77,7 @@ cd Promptimprover
 ./build_and_install.sh
 ```
 
-Both installers perform a deterministic dependency install, run the full test suite, build the package, install it globally, and verify the `gemini-prompt-refiner` command. Add that command to your MCP client configuration. See the [Setup Guide](https://github.com/Coding-Autopilot-System/Promptimprover/wiki/Setup-Guide) for full configuration instructions.
+Both installers perform a deterministic dependency install, run the full test suite, build the package, install it globally, and verify the `universal-refiner` command. Add that command to your MCP client configuration. See the [Setup Guide](https://github.com/Coding-Autopilot-System/Promptimprover/wiki/Setup-Guide) for full configuration instructions.
 
 For optional automatic pre-prompt linting and post-execution recording, see the [cross-CLI automation guide](./docs/cross-cli-automation.md). Claude Code and Gemini CLI expose the required lifecycle hooks. Codex currently requires MCP-first instructions or explicit helper invocation because its hook lifecycle does not transparently intercept each prompt.
 
@@ -85,7 +85,7 @@ For optional automatic pre-prompt linting and post-execution recording, see the 
 
 PromptImprover uses a local OpenAI-compatible endpoint before optional MCP sampling. The safe defaults target `http://localhost:9000/v1`, use `gemma3:12b` first, and fall back to `gemma3:1b`. If neither local model nor MCP sampling is available, rule-based refinement continues without semantic output.
 
-Override the defaults per repository with `.gemini-refiner.json`:
+Override the defaults per repository with `.universal-refiner.json`:
 
 ```json
 {

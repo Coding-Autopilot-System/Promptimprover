@@ -4,7 +4,7 @@ This repo is best read as an enterprise-oriented MCP and prompt-governance proto
 
 ## Present-State Evidence
 
-- `universal-refiner/package.json` defines the active package as `gemini-prompt-refiner` and describes it as cross-CLI prompt refinement using an MCP server.
+- `universal-refiner/package.json` defines the active package as `universal-refiner` and describes it as cross-CLI prompt refinement using an MCP server.
 - `universal-refiner/tests/` contains targeted Vitest coverage for detectors, history, lessons, memory, snippets, predictive refinement, timeline behavior, and server behavior.
 - `build_and_install.ps1` installs the `universal-refiner` package globally as `prompt-refiner`, showing the intended operator entry point.
 

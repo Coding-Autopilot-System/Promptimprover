@@ -17,11 +17,11 @@ describe("ConfigManager", () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("should load mandates from .gemini-refiner.json", () => {
+  it("should load mandates from .universal-refiner.json", () => {
     const config = {
       mandates: ["Always use tabs", "Write JSDoc for all functions"]
     };
-    fs.writeFileSync(path.join(tmpDir, ".gemini-refiner.json"), JSON.stringify(config));
+    fs.writeFileSync(path.join(tmpDir, ".universal-refiner.json"), JSON.stringify(config));
 
     const loaded = ConfigManager.loadConfig(tmpDir);
     expect(loaded.mandates).toContain("Always use tabs");
@@ -33,6 +33,41 @@ describe("ConfigManager", () => {
     expect(loaded).toEqual({});
   });
 
+  it("falls back to legacy .gemini-refiner.json with a deprecation warning", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    fs.writeFileSync(path.join(tmpDir, ".gemini-refiner.json"), JSON.stringify({
+      mandates: ["legacy mandate"],
+      semantic: { models: ["legacy-model"] },
+    }));
+
+    expect(ConfigManager.loadConfig(tmpDir).mandates).toEqual(["legacy mandate"]);
+    expect(ConfigManager.getSemanticConfig(tmpDir).models).toEqual(["legacy-model"]);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining(".gemini-refiner.json is deprecated"));
+  });
+
+  it("prefers .universal-refiner.json over legacy config when both exist", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    fs.writeFileSync(path.join(tmpDir, ".gemini-refiner.json"), JSON.stringify({ mandates: ["legacy"] }));
+    fs.writeFileSync(path.join(tmpDir, ".universal-refiner.json"), JSON.stringify({ mandates: ["current"] }));
+
+    expect(ConfigManager.loadConfig(tmpDir).mandates).toEqual(["current"]);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("mergeConfig writes the new filename while preserving loaded legacy config", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    fs.writeFileSync(path.join(tmpDir, ".gemini-refiner.json"), JSON.stringify({
+      mandates: ["legacy"],
+    }));
+
+    ConfigManager.mergeConfig(tmpDir, { ignoredPaths: ["dist"] });
+
+    expect(JSON.parse(fs.readFileSync(path.join(tmpDir, ".universal-refiner.json"), "utf8"))).toEqual({
+      mandates: ["legacy"],
+      ignoredPaths: ["dist"],
+    });
+  });
+
   it("should use quality-first local semantic defaults", () => {
     const config = ConfigManager.getSemanticConfig(tmpDir);
     expect(config.baseUrl).toBe("http://localhost:9000/v1");
@@ -41,7 +76,7 @@ describe("ConfigManager", () => {
   });
 
   it("should merge semantic overrides with safe defaults", () => {
-    fs.writeFileSync(path.join(tmpDir, ".gemini-refiner.json"), JSON.stringify({
+    fs.writeFileSync(path.join(tmpDir, ".universal-refiner.json"), JSON.stringify({
       semantic: { models: ["gemma3:1b"], timeoutMs: 5000 }
     }));
 
@@ -52,7 +87,7 @@ describe("ConfigManager", () => {
   });
 
   it("should reject malformed semantic overrides", () => {
-    fs.writeFileSync(path.join(tmpDir, ".gemini-refiner.json"), JSON.stringify({
+    fs.writeFileSync(path.join(tmpDir, ".universal-refiner.json"), JSON.stringify({
       semantic: { models: [42], timeoutMs: -1, temperature: 99, baseUrl: "" }
     }));
 
@@ -64,7 +99,7 @@ describe("ConfigManager", () => {
   });
 
   it("returns an empty config and reports invalid JSON", () => {
-    fs.writeFileSync(path.join(tmpDir, ".gemini-refiner.json"), "{");
+    fs.writeFileSync(path.join(tmpDir, ".universal-refiner.json"), "{");
     const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
     expect(ConfigManager.loadConfig(tmpDir)).toEqual({});
@@ -72,7 +107,7 @@ describe("ConfigManager", () => {
   });
 
   it("accepts all bounded semantic overrides", () => {
-    fs.writeFileSync(path.join(tmpDir, ".gemini-refiner.json"), JSON.stringify({
+    fs.writeFileSync(path.join(tmpDir, ".universal-refiner.json"), JSON.stringify({
       semantic: {
         localEnabled: false,
         mcpSamplingEnabled: false,
