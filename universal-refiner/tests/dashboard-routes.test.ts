@@ -26,7 +26,7 @@ describe("dashboard route coverage", () => {
     fs.rmSync(testDir, { recursive: true, force: true });
   });
 
-  it("serves state, timeline, commits, lessons, templates, health, and HTML", async () => {
+  it("serves state, timeline, commits, lessons, templates, tournaments, health, and HTML", async () => {
     const repoId = store.ensureRepository(repoDir).id;
     store.recordPrompt({ id: "prompt", repo_id: repoId, client: "test", raw_prompt: "Implement feature" });
     store.recordCommit({
@@ -55,9 +55,18 @@ describe("dashboard route coverage", () => {
       source_type: "test",
       success_score: 80,
     });
+    store.recordTournament({
+      id: "tournament",
+      repo_id: repoId,
+      baseline_prompt: "baseline",
+      variant_a: "variant a",
+      variant_b: "variant b",
+      winner_observed: "A",
+      details_json: "{}",
+    });
     const app = CommandCenterDashboard.createApp(repoDir);
 
-    for (const route of ["/api/state", "/api/timeline", "/api/commits", "/api/lessons", "/api/templates", "/api/health", "/"]) {
+    for (const route of ["/api/state", "/api/timeline", "/api/commits", "/api/lessons", "/api/templates", "/api/tournaments", "/api/health", "/"]) {
       const response = await app.request(route);
       expect(response.status, route).toBe(200);
     }
