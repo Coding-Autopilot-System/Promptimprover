@@ -1,5 +1,7 @@
 // secret-scan: allow-fixture
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { AgenticBlackboard } from "../src/core/blackboard.js";
+import { ConfigManager } from "../src/core/config.js";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -114,5 +116,35 @@ describeIfPowerShell("global registration doctor", () => {
     expect(result.stdout + result.stderr).toContain("Cannot safely merge invalid JSON config");
     expect(readFileSync(configPath, "utf8")).toBe("{");
     expect(existsSync(join(root, ".codex", "config.toml"))).toBe(false);
+  });
+
+  describe("getPredictiveMandates", () => {
+    it("returns predictive testing mandate when tests are mentioned frequently", () => {
+      vi.spyOn(AgenticBlackboard, "getLogs").mockReturnValue([
+        { message: "add a test", timestamp: "", type: "log", id: "1" },
+        { message: "fix test failure", timestamp: "", type: "log", id: "2" },
+        { message: "test coverage", timestamp: "", type: "log", id: "3" }
+      ] as any);
+      const predictive = ConfigManager.getPredictiveMandates();
+      expect(predictive).toContain("Predictive: You've asked for tests in 30% of recent prompts. Ensure comprehensive testing.");
+    });
+    it("returns predictive security mandate when security is mentioned frequently", () => {
+      vi.spyOn(AgenticBlackboard, "getLogs").mockReturnValue([
+        { message: "check security", timestamp: "", type: "log", id: "1" },
+        { message: "security review", timestamp: "", type: "log", id: "2" },
+        { message: "security bug", timestamp: "", type: "log", id: "3" }
+      ] as any);
+      const predictive = ConfigManager.getPredictiveMandates();
+      expect(predictive).toContain("Predictive: Security is a recurring theme. Apply OWASP principles strictly.");
+    });
+    it("returns predictive doc mandate when doc is mentioned frequently", () => {
+      vi.spyOn(AgenticBlackboard, "getLogs").mockReturnValue([
+        { message: "update doc", timestamp: "", type: "log", id: "1" },
+        { message: "write doc", timestamp: "", type: "log", id: "2" },
+        { message: "fix doc", timestamp: "", type: "log", id: "3" }
+      ] as any);
+      const predictive = ConfigManager.getPredictiveMandates();
+      expect(predictive).toContain("Predictive: Frequent documentation requests detected. Ensure JSDoc/README updates.");
+    });
   });
 });

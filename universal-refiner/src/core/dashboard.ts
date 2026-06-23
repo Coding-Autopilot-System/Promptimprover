@@ -241,8 +241,10 @@ export class CommandCenterDashboard {
 
     app.get("/api/timeline", async (c) => {
       try {
+        const store = EventStore.getInstance();
+        const repoId = store.ensureRepository(this.resolveSelectedPath(c.req.query("project"))).id;
         const provider = new TimelineProvider();
-        const timeline = provider.getUnifiedTimeline(50);
+        const timeline = provider.getUnifiedTimeline(50, repoId);
         return c.json(timeline);
       } catch (error) {
         this.logRouteError("api/timeline", error);

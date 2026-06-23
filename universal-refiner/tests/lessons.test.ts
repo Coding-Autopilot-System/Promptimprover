@@ -97,4 +97,44 @@ describe("LessonExtractor", () => {
     expect(request).toHaveBeenCalledTimes(2);
     expect(db.prepare("SELECT * FROM lessons WHERE prompt_id = ?").get("p-model")).toBeUndefined();
   });
+
+  it("should extract a lesson from a failed execution via extractFailureLessons", async () => {
+    const store = EventStore.getInstance();
+    const db = (store as any).db;
+    store.recordPrompt({ id: "p-fail-test", repo_id: "test", client: "cli", raw_prompt: "Bad task" });
+    db.prepare("INSERT INTO executions (id, prompt_id, workflow_name, executor_name, status, started_at, result_summary) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .run("e-fail-test", "p-fail-test", "test", "test", "failed", "2026-04-12T09:00:00Z", "TypeError: foo is undefined");
+
+    const mockRequestModel = vi.fn().mockResolvedValue(JSON.stringify({
+      title: "Avoid undefined errors",
+      summary: "Always check for undefined before accessing properties.",
+      lesson_type: "quality",
+      confidence: "high"
+    }));
+
+    const extractor = new LessonExtractor(mockRequestModel);
+    await extractor.extractFailureLessons();
+
+    expect(mockRequestModel).toHaveBeenCalled();
+    const lesson = db.prepare("SELECT * FROM lessons WHERE prompt_id = ?").get("p-fail-test");
+    expect(lesson).toBeDefined();
+    expect(lesson.title).toBe("Avoid undefined errors");
+    expect(lesson.source).toBe("auto-extracted-failure");
+  });
+
+  it("does not record a failure lesson when the model is unavailable or returns malformed output", async () => {
+    const store = EventStore.getInstance();
+    const db = (store as any).db;
+    store.recordPrompt({ id: "p-fail-model", repo_id: "test", client: "cli", raw_prompt: "Task 2" });
+    db.prepare("INSERT INTO executions (id, prompt_id, workflow_name, executor_name, status, started_at, result_summary) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .run("e-fail-model", "p-fail-model", "test", "test", "failed", "2026-04-12T09:00:00Z", "Error");
+
+    const request = vi.fn().mockResolvedValueOnce(null).mockResolvedValueOnce("not json");
+    const extractor = new LessonExtractor(request);
+    await extractor.extractFailureLessons();
+    await extractor.extractFailureLessons();
+
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(db.prepare("SELECT * FROM lessons WHERE prompt_id = ?").get("p-fail-model")).toBeUndefined();
+  });
 });

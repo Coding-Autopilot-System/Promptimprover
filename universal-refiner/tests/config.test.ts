@@ -214,4 +214,39 @@ describe("ConfigManager", () => {
 
     expect(ConfigManager.getPredictiveMandates()).toEqual([]);
   });
+
+  it("getObsidianConfig returns null if not specified", () => {
+    expect(ConfigManager.getObsidianConfig(tmpDir)).toBeNull();
+  });
+
+  it("getObsidianConfig returns configured values", () => {
+    fs.writeFileSync(path.join(tmpDir, ".universal-refiner.json"), JSON.stringify({
+      obsidian: {
+        vaultPath: "C:/My Vault",
+        syncLessons: true
+      }
+    }));
+    expect(ConfigManager.getObsidianConfig(tmpDir)).toEqual({
+      vaultPath: "C:/My Vault",
+      syncLessons: true
+    });
+  });
+  it("getAtlassianConfig returns null if not specified", () => {
+    expect(ConfigManager.getAtlassianConfig(tmpDir)).toBeNull();
+  });
+
+  it("getAtlassianConfig returns configured values", () => {
+    fs.writeFileSync(path.join(tmpDir, ".universal-refiner.json"), JSON.stringify({
+      atlassian: {
+        baseUrl: "https://example.atlassian.net",
+        email: "test@example.com",
+        apiToken: "token"
+      }
+    }));
+    expect(ConfigManager.getAtlassianConfig(tmpDir)).toEqual({
+      baseUrl: "https://example.atlassian.net",
+      email: "test@example.com",
+      apiToken: "token"
+    });
+  });
 });

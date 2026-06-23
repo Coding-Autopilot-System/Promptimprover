@@ -7,6 +7,11 @@ import { AutoPilotStatus } from "./autopilot-status.js";
 import { RuntimeLogger } from "./logger.js";
 import { CommandCenterDashboard } from "./dashboard.js";
 import { SerializedJobQueue } from "./job-queue.js";
+import { ExecutionOrchestrator } from "./execution-orchestrator.js";
+import { EventStore } from "../history/event-store.js";
+import { exec } from "child_process";
+import * as util from "util";
+const execAsync = util.promisify(exec);
 
 export class BackgroundAutonomyService {
   private watcher: chokidar.FSWatcher | null = null;
@@ -100,14 +105,21 @@ export class BackgroundAutonomyService {
       const engine = new CorrelationEngine();
       const extractor = new LessonExtractor(this.requestModelText);
       const lessonsBefore = AutoPilotStatus.getSnapshot().stats.lessonsExtracted;
+      const orchestrator = new ExecutionOrchestrator(EventStore.getInstance(), this.requestModelText);
+      
       const results = await Promise.allSettled([
         engine.correlateAll(),
         extractor.extractNewLessons(),
+        extractor.extractFailureLessons(),
       ]);
+
       const rejected = results.find((result): result is PromiseRejectedResult => result.status === "rejected");
       if (rejected) {
         throw rejected.reason;
       }
+
+      await this.attemptSelfHealing(orchestrator);
+
       const lessonsAfter = AutoPilotStatus.getSnapshot().stats.lessonsExtracted;
       if (lessonsAfter > lessonsBefore) {
         AutoPilotStatus.record(`Extracted ${lessonsAfter - lessonsBefore} lesson(s)`, "lesson");
@@ -116,7 +128,16 @@ export class BackgroundAutonomyService {
       AutoPilotStatus.incrementCycles();
       AutoPilotStatus.setActive();
       AutoPilotStatus.record("Cycle complete", "cycle_complete");
-      CommandCenterDashboard.log("Background Autonomy: Correlation and lesson extraction complete.");
+      CommandCenterDashboard.log("Background Autonomy: Correlation, lesson extraction, and self-healing complete.");
+
+      try {
+        await execAsync("npx tsx scripts/obsidian-sync.ts", { cwd: this.rootPath });
+        CommandCenterDashboard.log("Background Autonomy: Synced to Obsidian Vault.");
+        AutoPilotStatus.record("Synced to Obsidian Vault", "cycle_complete");
+      } catch (syncError) {
+        RuntimeLogger.error("Failed to sync to Obsidian", syncError);
+        CommandCenterDashboard.log("Background Autonomy: Failed to sync to Obsidian Vault.");
+      }
 
     } catch (error) {
       AutoPilotStatus.setIdle();
@@ -124,6 +145,27 @@ export class BackgroundAutonomyService {
       RuntimeLogger.error("Background Autonomy cycle failed", error);
       CommandCenterDashboard.log("Background Autonomy: Cycle failed. See logs.");
       throw error;
+    }
+  }
+
+  private async attemptSelfHealing(orchestrator: ExecutionOrchestrator) {
+    if (AutoPilotStatus.getSnapshot().state !== "active") return;
+
+    try {
+      const db = (EventStore.getInstance() as any).db;
+      // Find recently approved lessons that target an execution
+      const lessons = db.prepare(`
+        SELECT id, execution_id FROM lessons 
+        WHERE approved = 1 AND execution_id IS NOT NULL
+        ORDER BY created_at DESC LIMIT 10
+      `).all();
+
+      for (const lesson of lessons) {
+        // Heal and retry
+        await orchestrator.healAndRetry(lesson.execution_id, lesson.id);
+      }
+    } catch (error) {
+      RuntimeLogger.error("Self-healing failed", error);
     }
   }
 

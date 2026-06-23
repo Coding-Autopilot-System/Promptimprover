@@ -15,9 +15,12 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("chokidar", () => ({ watch: mocks.watch }));
+vi.mock("child_process", () => ({
+  exec: vi.fn((cmd, opts, cb) => cb(null, { stdout: "", stderr: "" }))
+}));
 vi.mock("../src/history/commit-ingest.js", () => ({ CommitIngester: { ingestLatest: mocks.ingest } }));
 vi.mock("../src/history/correlation-engine.js", () => ({ CorrelationEngine: class { correlateAll = mocks.correlate; } }));
-vi.mock("../src/history/lesson-extractor.js", () => ({ LessonExtractor: class { extractNewLessons = mocks.extract; } }));
+vi.mock("../src/history/lesson-extractor.js", () => ({ LessonExtractor: class { extractNewLessons = mocks.extract; extractFailureLessons = mocks.extract; } }));
 vi.mock("../src/core/logger.js", () => ({ RuntimeLogger: { info: mocks.info, debug: mocks.debug, error: mocks.error } }));
 vi.mock("../src/core/dashboard.js", () => ({ CommandCenterDashboard: { log: mocks.dashboard } }));
 vi.mock("../src/history/git-poller.js", () => ({
@@ -55,7 +58,7 @@ describe("BackgroundAutonomyService", () => {
     expect(mocks.watch).toHaveBeenCalledTimes(1);
     expect(mocks.ingest).toHaveBeenCalledWith("C:/repo", 100);
     expect(mocks.correlate).toHaveBeenCalledOnce();
-    expect(mocks.extract).toHaveBeenCalledOnce();
+    expect(mocks.extract).toHaveBeenCalledTimes(2);
     expect(mocks.watcher.close).toHaveBeenCalledOnce();
   });
 
@@ -158,5 +161,25 @@ describe("BackgroundAutonomyService", () => {
     service.stop();
     service.stop();
     vi.useRealTimers();
+  });
+
+  it("syncs to obsidian vault on cycle complete", async () => {
+    const child_process = await import("child_process");
+    vi.mocked(child_process.exec).mockImplementationOnce((cmd, opts, cb) => cb!(null, { stdout: "synced", stderr: "" }) as any);
+    const service = new BackgroundAutonomyService("C:/repo", vi.fn());
+    service.start();
+    await service.idle();
+    service.stop();
+    expect(mocks.dashboard).toHaveBeenCalledWith("Background Autonomy: Synced to Obsidian Vault.");
+  });
+
+  it("handles obsidian sync errors", async () => {
+    const child_process = await import("child_process");
+    vi.mocked(child_process.exec).mockImplementationOnce((cmd, opts, cb) => cb!(new Error("sync error"), { stdout: "", stderr: "" }) as any);
+    const service = new BackgroundAutonomyService("C:/repo", vi.fn());
+    service.start();
+    await service.idle();
+    service.stop();
+    expect(mocks.dashboard).toHaveBeenCalledWith("Background Autonomy: Failed to sync to Obsidian Vault.");
   });
 });

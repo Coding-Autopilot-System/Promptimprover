@@ -50,7 +50,8 @@ describe("TimelineProvider", () => {
     const prepare = vi.fn()
       .mockReturnValueOnce({ all: vi.fn().mockReturnValue([{ type: "prompt", id: "p", timestamp: "2026-01-01", summary: "p", details: null }]) })
       .mockReturnValueOnce({ all: vi.fn().mockReturnValue([{ type: "commit", id: "c", timestamp: "2026-01-03", summary: "c", details: null }]) })
-      .mockReturnValueOnce({ all: vi.fn().mockReturnValue([{ type: "log", id: "e", timestamp: "2026-01-02", summary: "e", details: null }]) });
+      .mockReturnValueOnce({ all: vi.fn().mockReturnValue([{ type: "log", id: "e", timestamp: "2026-01-02", summary: "e", details: null }]) })
+      .mockReturnValueOnce({ all: vi.fn().mockReturnValue([{ type: "execution", id: "x", timestamp: "2025-01-04", summary: "x", details: null }]) });
     (provider as any).eventStore = { db: { prepare } };
 
     expect(provider.getUnifiedTimeline(2)).toEqual([
