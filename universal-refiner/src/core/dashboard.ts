@@ -15,7 +15,6 @@ import { TimelineProvider } from "../history/timeline.js";
 import { EventStore } from "../history/event-store.js";
 import { AutoPilotStatus } from "./autopilot-status.js";
 import { createABEvaluationRecord } from "../evaluation/prompt-evaluator.js";
-import { randomUUID } from "crypto";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
