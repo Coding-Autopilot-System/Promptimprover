@@ -9,12 +9,12 @@ import { streamSSE } from "hono/streaming";
 import { getDisplayVersion } from "./version.js";
 import { RuntimeLogger } from "./logger.js";
 import { ConfigManager } from "./config.js";
+import { randomUUID } from "crypto";
 
 import { TimelineProvider } from "../history/timeline.js";
 import { EventStore } from "../history/event-store.js";
 import { AutoPilotStatus } from "./autopilot-status.js";
 import { createABEvaluationRecord } from "../evaluation/prompt-evaluator.js";
-import { randomUUID } from "crypto";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -392,6 +392,110 @@ export class CommandCenterDashboard {
       } catch (error) {
         this.logRouteError("api/health", error, selectedPath);
         return c.json({ error: "Provider health unavailable" }, 500);
+      }
+    });
+    app.post("/proxy/v1/chat/completions", async (c) => {
+      const selectedPath = this.resolveSelectedPath(c.req.query("project"));
+      try {
+        if (!isJsonContentType(c.req.header("content-type"))) {
+          return c.json({ error: "Proxy requests must use application/json" }, 415);
+        }
+
+        const config = ConfigManager.getSemanticConfig(selectedPath);
+        let upstreamBase: URL;
+        try {
+          upstreamBase = new URL(config.baseUrl.endsWith("/") ? config.baseUrl : `${config.baseUrl}/`);
+        } catch {
+          return c.json({ error: "Configured semantic baseUrl is invalid" }, 400);
+        }
+        if (!config.allowNonLoopback && !isLoopbackHost(upstreamBase.hostname)) {
+          return c.json({ error: "Proxy upstream must be loopback unless allowNonLoopback is enabled" }, 403);
+        }
+
+        let body: any;
+        try {
+          body = await c.req.json();
+        } catch {
+          return c.json({ error: "Proxy request body must be valid JSON" }, 400);
+        }
+
+        const messages = Array.isArray(body.messages) ? body.messages : [];
+        const lastMessage = messages[messages.length - 1];
+        const rawPrompt = typeof lastMessage?.content === "string" && lastMessage.content.trim()
+          ? lastMessage.content
+          : "Unknown proxy prompt";
+
+        const store = EventStore.getInstance();
+        const repoId = store.ensureRepository(selectedPath).id;
+        const promptId = `prm_${randomUUID()}`;
+        const execId = `exec_${randomUUID()}`;
+        store.recordPrompt({
+          id: promptId,
+          client: "API_PROXY",
+          agent_name: "ProxyClient",
+          raw_prompt: rawPrompt,
+          repo_id: repoId,
+        });
+
+        const upstreamUrl = new URL("chat/completions", upstreamBase).toString();
+        let upstreamResponse: Response;
+        try {
+          upstreamResponse = await fetch(upstreamUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...(c.req.header("authorization") ? { "Authorization": c.req.header("authorization") as string } : {}),
+            },
+            body: JSON.stringify(body),
+          });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          store.recordExecution({
+            id: execId,
+            prompt_id: promptId,
+            workflow_name: "proxy_forward",
+            executor_name: "LocalLLM",
+            status: "failed",
+            result_summary: `Network error reaching upstream: ${message}`,
+            artifacts_json: JSON.stringify({ error: redactSensitive(message) }),
+          });
+          return c.json({ error: "Proxy request failed" }, 502);
+        }
+
+        if (!upstreamResponse.ok) {
+          const errText = await upstreamResponse.text();
+          store.recordExecution({
+            id: execId,
+            prompt_id: promptId,
+            workflow_name: "proxy_forward",
+            executor_name: "LocalLLM",
+            status: "failed",
+            result_summary: `Upstream error: ${upstreamResponse.status} ${upstreamResponse.statusText}`,
+            artifacts_json: JSON.stringify({ error: redactSensitive(errText) }),
+          });
+          return new Response(errText, {
+            status: upstreamResponse.status,
+            headers: upstreamResponse.headers,
+          });
+        }
+
+        store.recordExecution({
+          id: execId,
+          prompt_id: promptId,
+          workflow_name: "proxy_forward",
+          executor_name: "LocalLLM",
+          status: "completed",
+          result_summary: `Proxied successfully to ${sanitizeEndpoint(config.baseUrl)}`,
+          artifacts_json: "{}",
+        });
+
+        return new Response(upstreamResponse.body, {
+          status: upstreamResponse.status,
+          headers: upstreamResponse.headers,
+        });
+      } catch (error) {
+        this.logRouteError("proxy/v1/chat/completions", error, selectedPath);
+        return c.json({ error: "Proxy request failed" }, 502);
       }
     });
 

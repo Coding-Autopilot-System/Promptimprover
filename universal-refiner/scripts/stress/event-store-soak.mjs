@@ -25,13 +25,14 @@ export async function runEventStoreSoak(options = {}) {
   const workers = readPositiveInteger(options.workers, 4, "workers");
   const durationMs = readPositiveInteger(options.durationMs, 10_000, "durationMs");
   const minOperations = readPositiveInteger(options.minOperations, workers * 10, "minOperations");
+  const minOperationsPerWorker = Math.ceil(minOperations / workers);
   const maxLossRatio = readRatio(options.maxLossRatio, 0, "maxLossRatio");
   const directory = await mkdtemp(join(tmpdir(), "prompt-refiner-soak-"));
   const databasePath = join(directory, "events.db");
 
   try {
     const results = await Promise.all(Array.from({ length: workers }, async (_, index) => {
-      const result = await runProcess(process.execPath, [workerScript, String(index), String(durationMs)], {
+      const result = await runProcess(process.execPath, [workerScript, String(index), String(durationMs), String(minOperationsPerWorker)], {
         cwd: repoRoot,
         env: { ...process.env, PROMPT_REFINER_GLOBAL_DIR: directory, PROMPT_REFINER_LOG_LEVEL: "error" },
         timeoutMs: durationMs + 30_000,
