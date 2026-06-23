@@ -2,6 +2,69 @@
 
 Use this guide to verify PromptImprover from a clean Windows operator session.
 
+## Current Verified Baseline
+
+This is the latest known-good baseline at the time this guide was updated:
+
+| Evidence | Value |
+|---|---|
+| Date | 2026-06-23 |
+| Branch | `master` |
+| Commit | `abbff59cc6d62b734912e2a98c61ae3dc1d4c6b8` |
+| GitHub CI run | `28030976193` |
+| CI result | `success` |
+| Local release gate | `npm.cmd run release:verify` passed |
+| Local test count | 51 test files, 382 tests |
+| Coverage | 100% statements, branches, functions, and lines |
+| Local runtime health | `/api/health` returned `runtime.status: online` |
+| Local semantic provider | `http://localhost:11434`, models `gemma3:12b` and `gemma3` |
+
+Treat this table as evidence, not a permanent guarantee. When any product behavior changes, rerun the gate and update this baseline.
+
+## Coverage Policy
+
+Coverage is enforced by `universal-refiner/vitest.config.ts`:
+
+| Metric | Required |
+|---|---:|
+| Statements | 100% |
+| Branches | 100% |
+| Functions | 100% |
+| Lines | 100% |
+
+The coverage include set is owned deterministic production logic under:
+
+- `hooks/lib/**/*.ts`
+- `src/**/*.ts`
+
+The only current exclusion is generated version metadata:
+
+- `src/core/generated-version.ts`
+
+Do not lower coverage thresholds to merge a feature. If a defect is reproduced, add a regression test at the owning boundary before fixing or merging.
+
+## Release Gate Matrix
+
+| Gate | Command | Scope | CI job |
+|---|---|---|---|
+| Clean install | `npm ci` | Dependency graph from lockfile | All jobs |
+| Build | `npm.cmd run build` | TypeScript and dashboard copy | All jobs |
+| Coverage | `npm.cmd run test:coverage` | Unit and integration tests with 100% thresholds | `build-and-test`, `windows` |
+| MCP acceptance | `npm.cmd run test:acceptance` | Advertised MCP tool schemas and dispatcher paths | `acceptance`, `windows` |
+| Semantic fallback | `npm.cmd run acceptance:semantic` | local provider ordering, fallback, malformed response, timeout, outage | `acceptance`, `windows` |
+| Tracked turn | `npm.cmd run acceptance:tracked-turn` | prompt ID and SQLite outcome linkage | `acceptance`, `windows` |
+| Stress tests | `npm.cmd run test:stress` | concurrent and long-running behavior | `stress`, `windows` |
+| EventStore stress | `npm.cmd run stress:event-store` | SQLite contention and multi-process behavior | `stress`, `windows` |
+| Abrupt recovery | `npm.cmd run recovery:event-store:abrupt` | interrupted writer recovery | `stress`, `windows` |
+| Soak | `npm.cmd run stress:event-store:soak` | long-duration EventStore behavior | `stress`, `windows` |
+| Production audit | `npm.cmd run security:audit` | production dependency vulnerabilities, high or above | `supply-chain` |
+| Full audit | `npm.cmd run security:audit:all` | production and development dependency vulnerabilities, high or above | `supply-chain` |
+| Secret scan | `npm.cmd run security:secrets` | committed credential patterns | `supply-chain` |
+| Package dry-run | `npm.cmd run package:check` | npm package contents | `supply-chain` |
+| Package runtime | `npm.cmd run acceptance:package-runtime` | packed tarball install plus `/api/health` smoke | `supply-chain`, `windows` |
+| Release gate | `npm.cmd run release:verify` | local aggregate of the gates above | local operator |
+| CI release gate | GitHub Actions `release-gate` job | all enterprise jobs must pass before merge | `release-gate` |
+
 ## 1. Enter The Active Package
 
 ```powershell
@@ -26,6 +89,8 @@ Expected result:
 - Secret scan passes.
 - Package dry-run passes.
 - `acceptance:package-runtime` installs the packed tarball into a temporary global prefix and serves `/api/health`.
+
+If this command fails, do not bypass it. Fix the failing behavior or document an explicit, reviewed exception in this file and in `docs/enterprise-release-gates.md`.
 
 ## 3. Check Global MCP Registration
 
@@ -151,3 +216,22 @@ Expected result:
 - `release-gate` passes.
 
 Remote CI is the authoritative proof for Linux and Windows clean-checkout behavior.
+
+## 9. Document New Tests
+
+Every production feature or bug fix should update this guide when it changes how the product is verified.
+
+Use this checklist:
+
+- Add or update tests at the smallest useful boundary.
+- Add acceptance or stress coverage for cross-process, CLI, MCP, SQLite, or packaging behavior.
+- Update the release gate matrix when a new script becomes part of the release contract.
+- Update the current verified baseline after the branch is merged and CI is green.
+- Keep limitations explicit. A green gate proves declared checks passed; it does not prove unknown future failures are impossible.
+
+## Known Limitations
+
+- Live Gemma verification depends on a local or external OpenAI-compatible model endpoint. The deterministic release gate covers provider fallback without requiring the operator's live model server.
+- MCP tool availability depends on the hosting client exposing a healthy MCP transport. If a live `lint_prompt` or refinement call closes its transport, restart the MCP runtime and rerun the global registration doctor before treating the CLI as healthy.
+- External CLI hook behavior depends on each client supporting hooks and trusting the current workspace. Codex currently uses MCP-first operation rather than transparent prompt lifecycle interception.
+- "100% coverage" means every currently included deterministic production line, branch, statement, and function is covered. It does not mean every possible integration, environment, timing, or future regression is impossible.

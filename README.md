@@ -58,6 +58,8 @@ flowchart LR
 
 - [Portfolio proof notes](./docs/portfolio-proof.md)
 - [Architecture spec](./docs/promptimprover-autogen-architecture-spec.md)
+- [Operator testing guide](./docs/operator-testing.md)
+- [Enterprise release gates](./docs/enterprise-release-gates.md)
 - [`universal-refiner/package.json`](./universal-refiner/package.json)
 - [`universal-refiner/tests`](./universal-refiner/tests)
 

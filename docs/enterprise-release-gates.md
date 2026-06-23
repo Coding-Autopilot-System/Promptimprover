@@ -2,6 +2,8 @@
 
 Passing unit tests alone does not prove that PromptImprover is operationally ready. A release is eligible only when every required gate below passes.
 
+For exact operator commands, current evidence, and the gate-to-CI mapping, see [Operator Testing Guide](./operator-testing.md).
+
 ## Quality Target
 
 - All owned deterministic production logic reaches 100% statements, branches, functions, and lines.
@@ -38,6 +40,10 @@ The first measured baseline on June 14, 2026 exposed substantial untested produc
 Initial high-risk gaps include MCP dispatcher behavior, background autonomy, template generation, prompt optimization, configuration failure paths, and operational dashboard branches.
 
 The enforced ratchet is 100% statements, branches, functions, and lines. It cannot be lowered without an approved exception.
+
+## Current Verified Release Baseline
+
+The current release gate baseline is documented in [Operator Testing Guide](./operator-testing.md#current-verified-baseline). At the time this page was updated, `master` commit `abbff59cc6d62b734912e2a98c61ae3dc1d4c6b8` had a successful GitHub CI run (`28030976193`) and a local `npm.cmd run release:verify` pass with 51 test files, 382 tests, and 100% statements, branches, functions, and lines.
 
 ## Operator Recovery
 

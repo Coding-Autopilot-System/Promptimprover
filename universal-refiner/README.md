@@ -101,7 +101,7 @@ See `.universal-refiner.example.json` for an annotated template.
 npm run release:verify
 ```
 
-Runs build, 100% test coverage, MCP acceptance, semantic fallback, stress/soak, and audit checks.
+Runs build, 100% test coverage, MCP acceptance, semantic fallback, stress/soak, audit checks, package dry-run, and package-runtime smoke testing. See the repo-level [operator testing guide](../docs/operator-testing.md) and [enterprise release gates](../docs/enterprise-release-gates.md) for the full release contract.
 
 ## Security
 
