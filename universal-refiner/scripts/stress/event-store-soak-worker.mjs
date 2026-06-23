@@ -2,13 +2,14 @@ import { EventStore } from "../../dist/src/history/event-store.js";
 
 const workerId = process.argv[2];
 const durationMs = Number.parseInt(process.argv[3] || "10000", 10);
+const minOperations = Number.parseInt(process.argv[4] || "0", 10);
 const deadline = Date.now() + durationMs;
 const counts = { events: 0, prompts: 0, executions: 0, operations: 0 };
 const store = EventStore.getInstance();
 let index = 0;
 let lastPromptId;
 
-while (Date.now() < deadline) {
+while (Date.now() < deadline || counts.operations < minOperations) {
   const id = `soak-${workerId}-${index}`;
   const operation = index % 3;
 
