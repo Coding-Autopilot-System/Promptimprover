@@ -6,6 +6,8 @@ export interface RefinerConfig {
   mandates?: string[];
   ignoredPaths?: string[];
   semantic?: Partial<SemanticConfig>;
+  atlassian?: any;
+  obsidian?: any;
 }
 
 export interface SemanticConfig {
@@ -86,6 +88,14 @@ export class ConfigManager {
         : defaults.temperature,
       allowNonLoopback: typeof semantic.allowNonLoopback === "boolean" ? semantic.allowNonLoopback : defaults.allowNonLoopback,
     };
+  }
+
+  static getAtlassianConfig(rootPath: string = "."): any | null {
+    return this.loadConfig(rootPath).atlassian || null;
+  }
+
+  static getObsidianConfig(rootPath: string = "."): any | null {
+    return this.loadConfig(rootPath).obsidian || null;
   }
 
   static getPredictiveMandates(): string[] {

@@ -210,6 +210,57 @@ export class EventStore {
     return stmt.get(promptId) || null;
   }
 
+  getExecutionById(executionId: string): any | null {
+    const stmt = this.db.prepare(`
+      SELECT * FROM executions
+      WHERE id = ?
+      LIMIT 1
+    `);
+    return stmt.get(executionId) || null;
+  }
+
+  getPromptById(promptId: string): any | null {
+    const stmt = this.db.prepare(`
+      SELECT * FROM prompts
+      WHERE id = ?
+      LIMIT 1
+    `);
+    return stmt.get(promptId) || null;
+  }
+
+  getLessonById(lessonId: string): any | null {
+    const stmt = this.db.prepare(`
+      SELECT * FROM lessons
+      WHERE id = ?
+      LIMIT 1
+    `);
+    return stmt.get(lessonId) || null;
+  }
+
+  getApprovedLessonsWithExecutions(limit = 10): { id: string; execution_id: string }[] {
+    const stmt = this.db.prepare(`
+      SELECT l.id, l.execution_id
+      FROM lessons l
+      JOIN executions e ON l.execution_id = e.id
+      WHERE l.approved = 1
+        AND l.execution_id IS NOT NULL
+        AND l.source = 'auto-extracted-failure'
+        AND e.status = 'failed'
+      ORDER BY l.created_at DESC
+      LIMIT ?
+    `);
+    return stmt.all(limit) as { id: string; execution_id: string }[];
+  }
+
+  countSelfHealingAttempts(executionId: string): number {
+    const row = this.db.prepare(`
+      SELECT COUNT(*) as count
+      FROM prompts
+      WHERE intent = 'self-heal' AND raw_prompt LIKE ?
+    `).get(`%[HEALING: ${executionId}]%`) as { count: number } | undefined;
+    return row?.count || 0;
+  }
+
   updateExecution(execution: {
     id: string;
     status?: string;

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-import { FileWatcher, FileChangeEvent } from "../src/watcher/file-watcher.js";
+import { FileWatcher, FileChangeEvent } from "../src/watcher/index.js";
 
 // ---------------------------------------------------------------------------
 // Helpers

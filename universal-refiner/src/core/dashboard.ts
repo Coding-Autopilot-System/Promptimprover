@@ -17,7 +17,12 @@ import { AutoPilotStatus } from "./autopilot-status.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export function resolveDashboardHost(configuredHost = process.env.PROMPT_REFINER_DASHBOARD_HOST): string {
-  return configuredHost?.trim() || "127.0.0.1";
+  const host = configuredHost?.trim() || "127.0.0.1";
+  if (isLoopbackHost(host) || process.env.PROMPT_REFINER_DASHBOARD_ALLOW_REMOTE === "true") {
+    return host;
+  }
+  RuntimeLogger.warn("Ignoring non-loopback dashboard host without PROMPT_REFINER_DASHBOARD_ALLOW_REMOTE=true", { host });
+  return "127.0.0.1";
 }
 
 interface DashboardState {
@@ -60,7 +65,7 @@ function sanitizeEndpoint(rawUrl: string): string {
 
 export function isSameOriginRequest(origin: string | undefined, requestUrl: string): boolean {
   if (!origin) {
-    return true;
+    return false;
   }
 
   try {
@@ -68,6 +73,23 @@ export function isSameOriginRequest(origin: string | undefined, requestUrl: stri
   } catch {
     return false;
   }
+}
+
+export function isJsonContentType(contentType: string | undefined): boolean {
+  const mediaType = contentType?.split(";")[0]?.trim().toLowerCase();
+  return mediaType === "application/json" || Boolean(mediaType?.endsWith("+json"));
+}
+
+function isLoopbackHost(host: string): boolean {
+  const normalized = host.toLowerCase();
+  return normalized === "localhost" || normalized === "127.0.0.1" || normalized === "::1" || normalized === "[::1]";
+}
+
+function redactSensitive(value: string): string {
+  return value
+    .replace(/(ghp_|github_pat_|sk-|xox[baprs]-)[a-z0-9_\-]+/gi, "$1[REDACTED]")
+    .replace(/(token|api[_-]?key|password|secret|authorization)\s*[:=]\s*["']?[^"'\s,;]+/gi, "$1=[REDACTED]")
+    .slice(0, 2_000);
 }
 
 export class CommandCenterDashboard {
@@ -92,7 +114,7 @@ export class CommandCenterDashboard {
   }
 
   private static logRouteError(routeName: string, error: unknown, selectedPath?: string) {
-    const message = error instanceof Error ? error.stack || error.message : String(error);
+    const message = redactSensitive(error instanceof Error ? error.stack || error.message : String(error));
     RuntimeLogger.error(`Dashboard route failed: ${routeName}`, {
       selectedPath: selectedPath || this.rootPath,
       error: message,
@@ -241,8 +263,10 @@ export class CommandCenterDashboard {
 
     app.get("/api/timeline", async (c) => {
       try {
+        const store = EventStore.getInstance();
+        const repoId = store.ensureRepository(this.resolveSelectedPath(c.req.query("project"))).id;
         const provider = new TimelineProvider();
-        const timeline = provider.getUnifiedTimeline(50);
+        const timeline = provider.getUnifiedTimeline(50, repoId);
         return c.json(timeline);
       } catch (error) {
         this.logRouteError("api/timeline", error);
@@ -302,7 +326,7 @@ export class CommandCenterDashboard {
         if (!isSameOriginRequest(c.req.header("origin"), c.req.url)) {
           return c.json({ error: "Cross-origin review requests are not allowed" }, 403);
         }
-        if (!c.req.header("content-type")?.toLowerCase().startsWith("application/json")) {
+        if (!isJsonContentType(c.req.header("content-type"))) {
           return c.json({ error: "Review requests must use application/json" }, 415);
         }
 

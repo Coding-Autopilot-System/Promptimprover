@@ -45,9 +45,10 @@
     "dependencies": {
         "@hono/node-server": "^1.19.13",
         "@modelcontextprotocol/sdk": "^1.29.0",
+        "@lancedb/lancedb": "^0.30.0",
         "better-sqlite3": "^12.8.0",
         "chokidar": "^5.0.0",
-        "flexsearch": "^0.7.43",
+        "flexsearch": "^0.8.212",
         "hono": "^4.12.25",
         "typescript": "^5.9.3",
         "zod": "^4.3.6"

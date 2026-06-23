@@ -179,6 +179,10 @@
     const escapeHtml = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const encodeCandidateId = (v) => encodeURIComponent(String(v)).replace(/'/g, '%27');
     const projectName = (p) => p.split(/[\\\/]/).filter(Boolean).pop() || 'ROOT';
+    const selectProject = (encodedProject) => {
+      currentProject = decodeURIComponent(encodedProject);
+      refreshData();
+    };
 
     function switchView(viewId) {
       document.querySelectorAll('.main-view').forEach(v => v.classList.add('hidden'));
@@ -199,13 +203,13 @@
       
       document.getElementById('project-badge').textContent = projectName(currentProject).toUpperCase();
       document.getElementById('project-dna').innerHTML = `
-        <div class="stat-row"><span class="stat-label">STACK</span><span>${state.stack}</span></div>
-        <div class="stat-row"><span class="stat-label">FRAMEWORK</span><span>${state.framework}</span></div>
-        <div class="stat-row"><span class="stat-label">PATTERN</span><span>${state.pattern}</span></div>
+        <div class="stat-row"><span class="stat-label">STACK</span><span>${escapeHtml(state.stack)}</span></div>
+        <div class="stat-row"><span class="stat-label">FRAMEWORK</span><span>${escapeHtml(state.framework)}</span></div>
+        <div class="stat-row"><span class="stat-label">PATTERN</span><span>${escapeHtml(state.pattern)}</span></div>
       `;
       
       document.getElementById('project-list').innerHTML = state.projects.map(p => 
-        `<div class="nav-item ${p === currentProject ? 'active' : ''}" onclick="currentProject='${p}';refreshData();" style="font-size: 0.7rem; margin-left: 0.5rem;">📂 ${projectName(p)}</div>`
+        `<div class="nav-item ${p === currentProject ? 'active' : ''}" onclick="selectProject('${encodeCandidateId(p)}')" style="font-size: 0.7rem; margin-left: 0.5rem;">📂 ${escapeHtml(projectName(p))}</div>`
       ).join('');
 
       // 2. View Specific Refresh
@@ -214,14 +218,46 @@
         const data = await res.json();
         document.getElementById('timeline-terminal').innerHTML = data.map(e => {
           let icon = 'EVT', color = 'var(--text)';
-          if (e.type === 'prompt') { icon = 'PRM'; color = 'var(--accent)'; }
+          let extraHtml = '';
+
+          if (e.type === 'prompt') { 
+            icon = 'PRM'; color = 'var(--accent)'; 
+            if (e.details && e.details.intent === 'self-heal') {
+              icon = 'HEAL'; color = '#10b981';
+              extraHtml += `<div class="badge" style="background: rgba(16, 185, 129, 0.15); color: #6ee7b7; border-color: rgba(16, 185, 129, 0.3); margin-top: 8px; display: inline-block;">AUTONOMOUS SELF-HEALING RETRY</div>`;
+            }
+            if (e.details && e.details.normalized_prompt) {
+              extraHtml += `<div style="margin-top: 8px; padding: 10px; background: rgba(56, 189, 248, 0.05); border-left: 2px solid var(--accent); border-radius: 0 4px 4px 0; font-size: 0.75rem; white-space: pre-wrap; color: var(--dim);"><strong>IMPROVED PROMPT:</strong><br/>${escapeHtml(e.details.normalized_prompt)}</div>`;
+            }
+          }
           else if (e.type === 'commit') { icon = 'GIT'; color = '#f472b6'; }
           else if (e.type === 'log') { icon = 'LOG'; color = 'var(--dim)'; }
+          else if (e.type === 'execution') { 
+            icon = 'EXEC'; 
+            color = e.event_type === 'failed' ? '#ef4444' : '#22c55e';
+            let execBadge = e.event_type === 'failed' 
+              ? `<span class="badge" style="background: rgba(239, 68, 68, 0.15); color: #fca5a5; border-color: rgba(239, 68, 68, 0.3);">AI ERROR</span>`
+              : `<span class="badge" style="background: rgba(34, 197, 94, 0.15); color: #86efac; border-color: rgba(34, 197, 94, 0.3);">SUCCESS</span>`;
+            
+            extraHtml = `<div style="margin-top: 8px;">
+              ${execBadge} <span style="color: var(--dim); font-size: 0.7rem; margin-left: 6px;">EXECUTOR: ${escapeHtml(e.author || 'unknown')}</span>
+            </div>`;
+
+            if (e.event_type === 'failed' && e.details && e.details.error) {
+              extraHtml += `<div style="margin-top: 8px; padding: 10px; background: rgba(239, 68, 68, 0.05); border-left: 2px solid #ef4444; border-radius: 0 4px 4px 0; font-size: 0.75rem; white-space: pre-wrap; color: #fca5a5; font-family: monospace;"><strong>RAW ERROR:</strong><br/>${escapeHtml(typeof e.details.error === 'object' ? JSON.stringify(e.details.error, null, 2) : String(e.details.error))}</div>`;
+            } else if (e.event_type === 'completed' && e.details && e.details.healedResponse) {
+               extraHtml += `<div style="margin-top: 8px; padding: 10px; background: rgba(34, 197, 94, 0.05); border-left: 2px solid #22c55e; border-radius: 0 4px 4px 0; font-size: 0.75rem; white-space: pre-wrap; color: #86efac;"><strong>HEALED RESPONSE:</strong><br/>${escapeHtml(e.details.healedResponse)}</div>`;
+            }
+          }
+
           return `
             <div class="log-line">
               <span class="log-ts">${new Date(e.timestamp).toLocaleTimeString()}</span>
               <span class="log-icon" style="color:${color}">${icon}</span>
-              <span>${escapeHtml(e.summary)}</span>
+              <div style="flex-grow: 1;">
+                <div style="white-space: pre-wrap; font-family: monospace; font-size: 0.85rem;">${escapeHtml(e.summary)}</div>
+                ${extraHtml}
+              </div>
             </div>
           `;
         }).join('');
@@ -235,14 +271,14 @@
             <div style="display:flex; justify-content:space-between; align-items:flex-start;">
               <div>
                 <code style="color:var(--accent)">${c.sha.substring(0, 7)}</code> <strong>${escapeHtml(c.message)}</strong>
-                <div style="font-size:0.7rem; color:var(--dim); margin-top:4px;">by ${c.author} • ${new Date(c.committed_at).toLocaleString()}</div>
+                <div style="font-size:0.7rem; color:var(--dim); margin-top:4px;">by ${escapeHtml(c.author)} • ${new Date(c.committed_at).toLocaleString()}</div>
               </div>
               <div style="text-align:right">
                 <span class="diff-add">+${JSON.parse(c.diff_stats_json).insertions || 0}</span> 
                 <span class="diff-del">-${JSON.parse(c.diff_stats_json).deletions || 0}</span>
               </div>
             </div>
-            ${c.prompt_id ? `<div class="badge" style="margin-top:10px; display:inline-block">Linked to Prompt: ${c.prompt_id}</div>` : ''}
+            ${c.prompt_id ? `<div class="badge" style="margin-top:10px; display:inline-block">Linked to Prompt: ${escapeHtml(c.prompt_id)}</div>` : ''}
           </div>
         `).join('') || '<p style="color:var(--dim)">No commits ingested for this project.</p>';
       }
@@ -328,9 +364,13 @@
       }
     }
 
+    // Auto-poll every 3 seconds so the user never has to click anything
+    setInterval(() => {
+      refreshData().catch(err => console.error("Auto-refresh failed:", err));
+    }, 3000);
+
     // Initial Load
     refreshData();
-    setInterval(refreshData, 10000);
   </script>
 </body>
 </html>

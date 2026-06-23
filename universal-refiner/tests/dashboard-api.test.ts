@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { CommandCenterDashboard, isSameOriginRequest } from "../src/core/dashboard.js";
+import { CommandCenterDashboard, isJsonContentType, isSameOriginRequest } from "../src/core/dashboard.js";
 import { EventStore } from "../src/history/event-store.js";
 
 describe("dashboard review and health APIs", () => {
@@ -24,10 +24,18 @@ describe("dashboard review and health APIs", () => {
     fs.rmSync(testDir, { recursive: true, force: true });
   });
 
-  it("allows missing or same-origin origins and rejects cross-origin requests", () => {
-    expect(isSameOriginRequest(undefined, "http://127.0.0.1:3000/api/review/lesson/1")).toBe(true);
+  it("allows same-origin origins and rejects missing or cross-origin requests", () => {
+    expect(isSameOriginRequest(undefined, "http://127.0.0.1:3000/api/review/lesson/1")).toBe(false);
     expect(isSameOriginRequest("http://127.0.0.1:3000", "http://127.0.0.1:3000/api/review/lesson/1")).toBe(true);
     expect(isSameOriginRequest("https://attacker.example", "http://127.0.0.1:3000/api/review/lesson/1")).toBe(false);
+  });
+
+  it("requires exact JSON content types for review mutations", () => {
+    expect(isJsonContentType("application/json")).toBe(true);
+    expect(isJsonContentType("application/json; charset=utf-8")).toBe(true);
+    expect(isJsonContentType("application/problem+json")).toBe(true);
+    expect(isJsonContentType("application/json-bad")).toBe(false);
+    expect(isJsonContentType(undefined)).toBe(false);
   });
 
   it("reviews only pending candidates in the selected repository", async () => {
@@ -65,21 +73,21 @@ describe("dashboard review and health APIs", () => {
 
     const lessonResponse = await app.request("/api/review/lesson/selected-lesson", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", origin: "http://localhost" },
       body: JSON.stringify({ decision: "approve" }),
     });
     expect(lessonResponse.status).toBe(200);
 
     const templateResponse = await app.request("/api/review/template/selected-template", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", origin: "http://localhost" },
       body: JSON.stringify({ decision: "reject" }),
     });
     expect(templateResponse.status).toBe(200);
 
     const scopedResponse = await app.request("/api/review/lesson/other-lesson", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", origin: "http://localhost" },
       body: JSON.stringify({ decision: "approve" }),
     });
     expect(scopedResponse.status).toBe(404);
@@ -102,14 +110,14 @@ describe("dashboard review and health APIs", () => {
 
     const invalidDecision = await app.request("/api/review/lesson/x", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", origin: "http://localhost" },
       body: JSON.stringify({ decision: "delete" }),
     });
     expect(invalidDecision.status).toBe(400);
 
     const invalidJson = await app.request("/api/review/lesson/x", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", origin: "http://localhost" },
       body: "{",
     });
     expect(invalidJson.status).toBe(400);
