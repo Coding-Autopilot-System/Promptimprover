@@ -403,6 +403,43 @@ export class EventStore {
     );
   }
 
+  recordTournament(tournament: {
+    id: string;
+    repo_id?: string | null;
+    baseline_prompt: string;
+    variant_a: string;
+    variant_b: string;
+    winner_observed: string;
+    details_json: string;
+  }) {
+    const now = new Date().toISOString();
+    const stmt = this.db.prepare(`
+      INSERT INTO tournaments (
+        id, repo_id, baseline_prompt, variant_a, variant_b, winner_observed, details_json, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    stmt.run(
+      tournament.id,
+      tournament.repo_id || null,
+      tournament.baseline_prompt,
+      tournament.variant_a,
+      tournament.variant_b,
+      tournament.winner_observed,
+      tournament.details_json,
+      now
+    );
+  }
+
+  getTournaments(repoId: string, limit = 50) {
+    const stmt = this.db.prepare(`
+      SELECT * FROM tournaments
+      WHERE repo_id = ? OR repo_id IS NULL
+      ORDER BY created_at DESC
+      LIMIT ?
+    `);
+    return stmt.all(repoId, limit);
+  }
+
   recordTemplate(template: {
     id: string;
     repo_id: string;

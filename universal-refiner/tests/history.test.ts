@@ -286,6 +286,43 @@ describe("EventStore", () => {
     });
   });
 
+  it("records and lists prompt tournament evaluations for a repository", () => {
+    const store = EventStore.getInstance();
+    store.recordTournament({
+      id: "tournament-1",
+      repo_id: "repo",
+      baseline_prompt: "Fix the failing tests",
+      variant_a: "Fix the failing tests with regression coverage",
+      variant_b: "Fix tests",
+      winner_observed: "A",
+      details_json: "{\"winner\":\"A\"}",
+    });
+    store.recordTournament({
+      id: "tournament-2",
+      repo_id: null,
+      baseline_prompt: "Global baseline",
+      variant_a: "Global A",
+      variant_b: "Global B",
+      winner_observed: "tie",
+      details_json: "{}",
+    });
+
+    expect(store.getTournaments("repo", 10)).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: "tournament-1",
+        repo_id: "repo",
+        baseline_prompt: "Fix the failing tests",
+        winner_observed: "A",
+      }),
+      expect.objectContaining({
+        id: "tournament-2",
+        repo_id: null,
+        winner_observed: "tie",
+      }),
+    ]));
+    expect(store.getTournaments("repo", 1)).toHaveLength(1);
+  });
+
   it("backs up and restores a verified database", async () => {
     const store = EventStore.getInstance();
     store.recordEvent({ id: "before-backup", event_type: "test", summary: "persist me" });

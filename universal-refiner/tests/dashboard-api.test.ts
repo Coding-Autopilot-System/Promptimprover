@@ -123,6 +123,49 @@ describe("dashboard review and health APIs", () => {
     expect(invalidJson.status).toBe(400);
   });
 
+  it("runs and persists prompt tournaments through same-origin JSON requests", async () => {
+    const app = CommandCenterDashboard.createApp(repoDir);
+    const response = await app.request("/api/tournaments/run", {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: "http://localhost" },
+      body: JSON.stringify({
+        baseline: "Fix failing tests",
+        variantA: "Fix failing tests with regression coverage and verification",
+        variantB: "Fix tests",
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    const experiment = await response.json() as any;
+    expect(experiment.experimentId).toMatch(/^exp_/);
+    expect(experiment.heuristicPreference).toBe("A");
+
+    const listResponse = await app.request("/api/tournaments");
+    const tournaments = await listResponse.json() as any[];
+    expect(listResponse.status).toBe(200);
+    expect(tournaments).toEqual([
+      expect.objectContaining({
+        id: experiment.experimentId,
+        baseline_prompt: "Fix failing tests",
+        winner_observed: "A",
+      }),
+    ]);
+  });
+
+  it("rejects unsafe or malformed tournament mutations", async () => {
+    const app = CommandCenterDashboard.createApp(repoDir);
+    const request = (body: string, headers: Record<string, string> = { "content-type": "application/json", origin: "http://localhost" }) =>
+      app.request("/api/tournaments/run", { method: "POST", headers, body });
+
+    expect((await request(JSON.stringify({ baseline: "x", variantA: "y", variantB: "z" }), {
+      "content-type": "application/json",
+      origin: "https://attacker.example",
+    })).status).toBe(403);
+    expect((await request("{}", { origin: "http://localhost" })).status).toBe(415);
+    expect((await request("{")).status).toBe(400);
+    expect((await request(JSON.stringify({ baseline: "x", variantA: " ", variantB: "z" }))).status).toBe(400);
+  });
+
   it("returns sanitized semantic provider and runtime health", async () => {
     fs.writeFileSync(path.join(repoDir, ".universal-refiner.json"), JSON.stringify({
       semantic: {
@@ -177,6 +220,8 @@ describe("dashboard review and health APIs", () => {
     expect(html).toContain("reviewCandidate");
     expect(html).toContain("Approve");
     expect(html).toContain("Reject");
+    expect(html).toContain("Run A/B Prompt Tournament");
+    expect(html).toContain("/api/tournaments");
     expect(html).toContain("PROVIDER HEALTH");
     expect(html).toContain("/api/health");
   });

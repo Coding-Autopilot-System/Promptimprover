@@ -154,4 +154,15 @@ CREATE TABLE IF NOT EXISTS prompt_template_links (
   commit_id TEXT,
   lesson_id TEXT
 );
+
+CREATE TABLE IF NOT EXISTS tournaments (
+  id TEXT PRIMARY KEY,
+  repo_id TEXT,
+  baseline_prompt TEXT NOT NULL,
+  variant_a TEXT NOT NULL,
+  variant_b TEXT NOT NULL,
+  winner_observed TEXT NOT NULL,
+  details_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL
+);
 `;

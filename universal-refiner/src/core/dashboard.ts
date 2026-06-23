@@ -13,6 +13,8 @@ import { ConfigManager } from "./config.js";
 import { TimelineProvider } from "../history/timeline.js";
 import { EventStore } from "../history/event-store.js";
 import { AutoPilotStatus } from "./autopilot-status.js";
+import { createABEvaluationRecord } from "../evaluation/prompt-evaluator.js";
+import { randomUUID } from "crypto";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -390,6 +392,69 @@ export class CommandCenterDashboard {
       } catch (error) {
         this.logRouteError("api/health", error, selectedPath);
         return c.json({ error: "Provider health unavailable" }, 500);
+      }
+    });
+
+    app.get("/api/tournaments", async (c) => {
+      const selectedPath = this.resolveSelectedPath(c.req.query("project"));
+      try {
+        const repoId = EventStore.getInstance().ensureRepository(selectedPath).id;
+        const tournaments = EventStore.getInstance().getTournaments(repoId);
+        return c.json(tournaments);
+      } catch (error) {
+        this.logRouteError("api/tournaments", error, selectedPath);
+        return c.json({ error: "Failed to fetch tournaments" }, 500);
+      }
+    });
+
+    app.post("/api/tournaments/run", async (c) => {
+      const selectedPath = this.resolveSelectedPath(c.req.query("project"));
+      try {
+        if (!isSameOriginRequest(c.req.header("origin"), c.req.url)) {
+          return c.json({ error: "Cross-origin tournament requests are not allowed" }, 403);
+        }
+        if (!isJsonContentType(c.req.header("content-type"))) {
+          return c.json({ error: "Tournament requests must use application/json" }, 415);
+        }
+
+        let body: { baseline?: unknown; variantA?: unknown; variantB?: unknown };
+        try {
+          body = await c.req.json() as { baseline?: unknown; variantA?: unknown; variantB?: unknown };
+        } catch {
+          return c.json({ error: "Tournament request body must be valid JSON" }, 400);
+        }
+
+        const { baseline, variantA, variantB } = body;
+        if (
+          typeof baseline !== "string" || baseline.trim().length === 0 ||
+          typeof variantA !== "string" || variantA.trim().length === 0 ||
+          typeof variantB !== "string" || variantB.trim().length === 0
+        ) {
+          return c.json({ error: "Tournament baseline, variantA, and variantB must be non-empty strings" }, 400);
+        }
+
+        const experiment = createABEvaluationRecord({
+          experimentId: `exp_${randomUUID()}`,
+          baselinePrompt: baseline,
+          variantA: { id: "A", prompt: variantA },
+          variantB: { id: "B", prompt: variantB }
+        });
+
+        const repoId = EventStore.getInstance().ensureRepository(selectedPath).id;
+        EventStore.getInstance().recordTournament({
+          id: experiment.experimentId,
+          repo_id: repoId,
+          baseline_prompt: baseline,
+          variant_a: variantA,
+          variant_b: variantB,
+          winner_observed: experiment.heuristicPreference,
+          details_json: JSON.stringify(experiment)
+        });
+
+        return c.json(experiment);
+      } catch (error) {
+        this.logRouteError("api/tournaments/run", error, selectedPath);
+        return c.json({ error: "Failed to run tournament" }, 500);
       }
     });
 

@@ -139,6 +139,7 @@ describe("dashboard deterministic fallbacks", () => {
       ["/api/commits", () => vi.spyOn(EventStore, "getInstance").mockImplementationOnce(() => { throw new Error("commit secret"); })],
       ["/api/lessons", () => vi.spyOn(EventStore, "getInstance").mockImplementationOnce(() => { throw new Error("lesson secret"); })],
       ["/api/templates", () => vi.spyOn(EventStore, "getInstance").mockImplementationOnce(() => { throw new Error("template secret"); })],
+      ["/api/tournaments", () => vi.spyOn(EventStore, "getInstance").mockImplementationOnce(() => { throw new Error("tournament secret"); })],
       ["/api/health", () => vi.spyOn(CommandCenterDashboard as any, "buildHealth").mockImplementationOnce(() => { throw new Error("health secret"); })],
       ["/", () => vi.spyOn(CommandCenterDashboard as any, "buildState").mockRejectedValueOnce("root failure")],
     ];
@@ -149,6 +150,24 @@ describe("dashboard deterministic fallbacks", () => {
       expect(response.status, route).toBe(500);
     }
     expect(RuntimeLogger.error).toBeDefined();
+  });
+
+  it("returns sanitized tournament mutation failures", async () => {
+    const app = CommandCenterDashboard.createApp(directory);
+    vi.spyOn(EventStore, "getInstance").mockImplementationOnce(() => { throw new Error("tournament write secret"); });
+
+    const response = await app.request("/api/tournaments/run", {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: "http://localhost" },
+      body: JSON.stringify({
+        baseline: "baseline",
+        variantA: "variant a",
+        variantB: "variant b",
+      }),
+    });
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({ error: "Failed to run tournament" });
   });
 
   it("renders an Error without a stack in the root failure page", async () => {
