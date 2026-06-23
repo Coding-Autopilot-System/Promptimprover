@@ -83,6 +83,7 @@
       <div class="nav-item" onclick="switchView('intelligence')">🧠 COMMIT INTELLIGENCE</div>
       <div class="nav-item" onclick="switchView('learning')">📖 LEARNING LAYER</div>
       <div class="nav-item" onclick="switchView('library')">📚 PROMPT LIBRARY</div>
+      <div class="nav-item" onclick="switchView('tournaments')">🏆 TOURNAMENTS</div>
       <div class="nav-item" onclick="switchView('health')">PROVIDER HEALTH</div>
       
       <div style="margin-top: 2rem; font-size: 0.6rem; color: var(--dim); text-transform: uppercase; letter-spacing: 0.1em; padding-left: 0.75rem;">Selected Project</div>
@@ -168,6 +169,35 @@
         </div>
       </div>
     </div>
+
+    <!-- VIEW: TOURNAMENTS -->
+    <div id="view-tournaments" class="main-view hidden">
+      <div class="grid">
+        <div class="card col-12">
+          <h2>Run A/B Prompt Tournament</h2>
+          <div style="display: flex; gap: 1rem; margin-bottom: 1rem;">
+            <div style="flex: 1;">
+              <label style="display:block; margin-bottom: 4px; color: var(--dim);">Baseline Prompt</label>
+              <textarea id="t-baseline" style="width: 100%; height: 100px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); color: var(--text); padding: 8px; font-family: monospace;"></textarea>
+            </div>
+            <div style="flex: 1;">
+              <label style="display:block; margin-bottom: 4px; color: var(--dim);">Variant A</label>
+              <textarea id="t-variant-a" style="width: 100%; height: 100px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); color: var(--text); padding: 8px; font-family: monospace;"></textarea>
+            </div>
+            <div style="flex: 1;">
+              <label style="display:block; margin-bottom: 4px; color: var(--dim);">Variant B</label>
+              <textarea id="t-variant-b" style="width: 100%; height: 100px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); color: var(--text); padding: 8px; font-family: monospace;"></textarea>
+            </div>
+          </div>
+          <button onclick="runTournament()" style="background: var(--accent); color: #fff; border: none; padding: 8px 16px; cursor: pointer; border-radius: 4px; font-weight: bold;">Run Heuristic Tournament</button>
+          <div id="tournament-run-status" style="margin-top: 8px; font-size: 0.8rem; color: var(--dim);"></div>
+        </div>
+        <div class="card col-12">
+          <h2>Tournament History</h2>
+          <div id="tournament-history"></div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script id="dashboard-data" type="application/json">{{STATE_JSON}}</script>
@@ -190,10 +220,36 @@
       document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
       event.target.classList.add('active');
       
-      const titles = { 'stream': 'Global Intelligence Stream', 'intelligence': 'Commit Intelligence', 'learning': 'Learning Layer', 'library': 'Prompt Library', 'health': 'Provider Health' };
+      const titles = { 'stream': 'Global Intelligence Stream', 'intelligence': 'Commit Intelligence', 'learning': 'Learning Layer', 'library': 'Prompt Library', 'tournaments': 'A/B Tournaments', 'health': 'Provider Health' };
       document.getElementById('view-title').textContent = titles[viewId];
       currentView = viewId;
       refreshData();
+    }
+
+    async function runTournament() {
+      const baseline = document.getElementById('t-baseline').value;
+      const variantA = document.getElementById('t-variant-a').value;
+      const variantB = document.getElementById('t-variant-b').value;
+      if (!baseline || !variantA || !variantB) {
+        document.getElementById('tournament-run-status').textContent = "All three prompts are required.";
+        return;
+      }
+      document.getElementById('tournament-run-status').textContent = "Running heuristic evaluation...";
+      try {
+        const res = await fetch(`/api/tournaments/run?project=${encodeURIComponent(currentProject)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ baseline, variantA, variantB })
+        });
+        if (res.ok) {
+          document.getElementById('tournament-run-status').innerHTML = `<span style="color:#22c55e">Tournament complete!</span>`;
+          refreshData();
+        } else {
+          document.getElementById('tournament-run-status').textContent = "Failed to run tournament.";
+        }
+      } catch(e) {
+        document.getElementById('tournament-run-status').textContent = "Error: " + e.message;
+      }
     }
 
     async function refreshData() {
@@ -311,6 +367,46 @@
             ${t.approved === 0 && t.deprecated === 0 ? `<div class="actions"><button class="approve" onclick="reviewCandidate('template','${encodeCandidateId(t.id)}','approve')">Approve</button><button class="reject" onclick="reviewCandidate('template','${encodeCandidateId(t.id)}','reject')">Reject</button></div>` : ''}
           </div>
         `).join('') || '<p style="color:var(--dim)">Prompt library is currently empty.</p>';
+      }
+
+      if (currentView === 'tournaments') {
+        const res = await fetch(`/api/tournaments?project=${encodeURIComponent(currentProject)}`);
+        const data = await res.json();
+        document.getElementById('tournament-history').innerHTML = data.map(t => {
+          let details = {};
+          try { details = JSON.parse(t.details_json); } catch(e) {}
+
+          let winnerHtml = `<span class="badge" style="background: rgba(34, 197, 94, 0.15); color: #86efac; border-color: rgba(34, 197, 94, 0.3);">WINNER: ${t.winner_observed}</span>`;
+          if (t.winner_observed === 'tie') {
+            winnerHtml = `<span class="badge" style="background: rgba(255, 255, 255, 0.15); color: #fff; border-color: rgba(255, 255, 255, 0.3);">TIE</span>`;
+          }
+
+          let scoreA = details.variantA?.evaluation?.heuristicScore || 0;
+          let scoreB = details.variantB?.evaluation?.heuristicScore || 0;
+
+          return `
+          <div class="card" style="border-top: 2px solid ${t.winner_observed === 'A' ? 'var(--accent)' : t.winner_observed === 'B' ? '#f472b6' : 'var(--dim)'}; margin-bottom: 1rem;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 8px;">
+              <strong>Tournament ${t.id.substring(0,8)}...</strong>
+              ${winnerHtml}
+            </div>
+            <div style="font-size: 0.8rem; color: var(--dim); margin-bottom: 8px;">Created: ${new Date(t.created_at).toLocaleString()}</div>
+
+            <div style="font-size: 0.85rem; color: var(--dim); margin-bottom: 4px;"><strong>BASELINE:</strong> ${escapeHtml(t.baseline_prompt)}</div>
+
+            <div style="display: flex; gap: 1rem; margin-top: 10px;">
+              <div style="flex:1; padding: 10px; background: rgba(0,0,0,0.2); border-left: 2px solid var(--accent); border-radius: 4px;">
+                <div style="margin-bottom: 6px;"><strong>VARIANT A</strong> (Score: ${scoreA})</div>
+                <pre style="font-size: 0.75rem; white-space: pre-wrap;">${escapeHtml(t.variant_a)}</pre>
+              </div>
+              <div style="flex:1; padding: 10px; background: rgba(0,0,0,0.2); border-left: 2px solid #f472b6; border-radius: 4px;">
+                <div style="margin-bottom: 6px;"><strong>VARIANT B</strong> (Score: ${scoreB})</div>
+                <pre style="font-size: 0.75rem; white-space: pre-wrap;">${escapeHtml(t.variant_b)}</pre>
+              </div>
+            </div>
+          </div>
+          `;
+        }).join('') || '<p style="color:var(--dim)">No tournament history found.</p>';
       }
 
       if (currentView === 'health') {
