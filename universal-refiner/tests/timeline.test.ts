@@ -59,4 +59,20 @@ describe("TimelineProvider", () => {
       expect.objectContaining({ id: "e", details: {} }),
     ]);
   });
+
+  it("does not crash when stored timeline JSON is malformed", () => {
+    const provider = new TimelineProvider();
+    const prepare = vi.fn()
+      .mockReturnValueOnce({ all: vi.fn().mockReturnValue([]) })
+      .mockReturnValueOnce({ all: vi.fn().mockReturnValue([{ type: "commit", id: "c", timestamp: "2026-01-03", summary: "c", details: "{" }]) })
+      .mockReturnValueOnce({ all: vi.fn().mockReturnValue([{ type: "log", id: "e", timestamp: "2026-01-02", summary: "e", details: "not-json" }]) })
+      .mockReturnValueOnce({ all: vi.fn().mockReturnValue([{ type: "execution", id: "x", timestamp: "2026-01-01", summary: "x", details: "[" }]) });
+    (provider as any).eventStore = { db: { prepare } };
+
+    expect(provider.getUnifiedTimeline()).toEqual([
+      expect.objectContaining({ id: "c", details: { files: [] } }),
+      expect.objectContaining({ id: "e", details: {} }),
+      expect.objectContaining({ id: "x", details: {} }),
+    ]);
+  });
 });

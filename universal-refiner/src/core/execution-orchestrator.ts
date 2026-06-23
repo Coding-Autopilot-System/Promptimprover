@@ -4,6 +4,9 @@ import { RuntimeLogger } from "./logger.js";
 import { CommandCenterDashboard } from "./dashboard.js";
 import { AutoPilotStatus } from "./autopilot-status.js";
 
+const MAX_HEALING_RETRIES = 2;
+const MAX_STORED_MODEL_RESPONSE_LENGTH = 8_000;
+
 export class ExecutionOrchestrator {
   constructor(
     private eventStore: EventStore, 
@@ -11,35 +14,32 @@ export class ExecutionOrchestrator {
   ) {}
 
   async healAndRetry(executionId: string, lessonId: string): Promise<boolean> {
-    const db = (this.eventStore as any).db;
-    
-    // Fetch execution and lesson
-    const execution = this.eventStore.getExecutionByPromptId(
-      db.prepare("SELECT prompt_id FROM executions WHERE id = ?").get(executionId)?.prompt_id || ""
-    );
+    const execution = this.eventStore.getExecutionById(executionId);
     if (!execution) {
       RuntimeLogger.warn(`Execution ${executionId} not found for healing.`);
       return false;
     }
 
-    const lesson = db.prepare("SELECT * FROM lessons WHERE id = ?").get(lessonId);
+    const lesson = this.eventStore.getLessonById(lessonId);
     if (!lesson) {
       RuntimeLogger.warn(`Lesson ${lessonId} not found for healing.`);
       return false;
     }
+    if (lesson.approved !== 1 || lesson.execution_id !== executionId) {
+      RuntimeLogger.warn(`Lesson ${lessonId} is not approved for execution ${executionId}.`);
+      return false;
+    }
 
     // Fetch the original prompt
-    const prompt = db.prepare("SELECT * FROM prompts WHERE id = ?").get(execution.prompt_id);
+    const prompt = this.eventStore.getPromptById(execution.prompt_id);
     if (!prompt) {
       RuntimeLogger.warn(`Original prompt not found for execution ${executionId}.`);
       return false;
     }
 
-    const retryCount = db.prepare(`SELECT COUNT(*) as count FROM prompts WHERE intent = 'self-heal' AND raw_prompt LIKE ?`).get(`%[HEALING: ${executionId}]%`)?.count || 0;
-    
-    const MAX_RETRIES = 2;
-    if (retryCount >= MAX_RETRIES) {
-      RuntimeLogger.warn(`Max retries (${MAX_RETRIES}) reached for execution ${executionId}.`);
+    const retryCount = this.eventStore.countSelfHealingAttempts(executionId);
+    if (retryCount >= MAX_HEALING_RETRIES) {
+      RuntimeLogger.warn(`Max retries (${MAX_HEALING_RETRIES}) reached for execution ${executionId}.`);
       return false;
     }
 
@@ -96,7 +96,7 @@ Please re-execute the original request while strictly adhering to the lesson abo
         status: "completed",
         ended_at: new Date().toISOString(),
         result_summary: `Healed execution succeeded.`,
-        artifacts_json: JSON.stringify({ healedResponse: responseText })
+        artifacts_json: JSON.stringify({ healedResponse: truncateForStorage(responseText) })
       });
       
       AutoPilotStatus.record(`Healed execution ${executionId} successfully.`, "cycle_complete");
@@ -116,4 +116,11 @@ Please re-execute the original request while strictly adhering to the lesson abo
       return false;
     }
   }
+}
+
+function truncateForStorage(value: string): string {
+  if (value.length <= MAX_STORED_MODEL_RESPONSE_LENGTH) {
+    return value;
+  }
+  return `${value.slice(0, MAX_STORED_MODEL_RESPONSE_LENGTH)}... [truncated]`;
 }

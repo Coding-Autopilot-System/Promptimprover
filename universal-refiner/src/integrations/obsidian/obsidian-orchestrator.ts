@@ -45,7 +45,7 @@ export class ObsidianOrchestrator {
 
     this.watcher.on("change", (filePath: string) => {
       RuntimeLogger.info(`[ObsidianWatcher] Detected change in ${path.basename(filePath)}. Syncing...`);
-      this.reindex(vaultPath);
+      void this.reindex(vaultPath);
     });
 
     // Initialize Search Index (FlexSearch)
@@ -66,39 +66,39 @@ export class ObsidianOrchestrator {
   }
 
   private static async reindex(vaultPath: string) {
-    if (!this.searchIndex || !this.db) return;
-    
-    const conceptsDir = path.join(vaultPath, "wiki", "concepts");
-    if (!fs.existsSync(conceptsDir)) return;
+    try {
+      if (!this.searchIndex || !this.db) return;
 
-    const files = fs.readdirSync(conceptsDir).filter(f => f.endsWith(".md"));
-    const data = [];
+      const conceptsDir = path.join(vaultPath, "wiki", "concepts");
+      if (!fs.existsSync(conceptsDir)) return;
 
-    for (let i = 0; i < files.length; i++) {
-      const content = fs.readFileSync(path.join(conceptsDir, files[i]), "utf-8");
-      this.searchIndex.add(i, content);
-      
-      // Simple hash-based vector for demo (in production use real embeddings)
-      const vector = this.getDummyVector(content);
-      data.push({
-        id: i,
-        name: files[i],
-        text: content,
-        vector: vector
-      });
-    }
+      const files = fs.readdirSync(conceptsDir).filter(f => f.endsWith(".md"));
+      const data = [];
 
-    if (data.length > 0) {
-      try {
+      for (let i = 0; i < files.length; i++) {
+        const content = fs.readFileSync(path.join(conceptsDir, files[i]), "utf-8");
+        this.searchIndex.add(i, content);
+
+        // Simple hash-based vector for demo (in production use real embeddings)
+        const vector = this.getDummyVector(content);
+        data.push({
+          id: i,
+          name: files[i],
+          text: content,
+          vector: vector
+        });
+      }
+
+      if (data.length > 0) {
         if (await this.db.tableNames().then(tabs => tabs.includes("wiki_concepts"))) {
           this.table = await this.db.openTable("wiki_concepts");
           await this.table.add(data);
         } else {
           this.table = await this.db.createTable("wiki_concepts", data);
         }
-      } catch (e) {
-        RuntimeLogger.error("LanceDB reindex failed", e);
       }
+    } catch (e) {
+      RuntimeLogger.error("LanceDB reindex failed", e);
     }
   }
 
@@ -116,21 +116,22 @@ export class ObsidianOrchestrator {
     if (!config || !config.syncLessons) return;
 
     try {
-      const repoId = path.basename(rootPath);
       const store = EventStore.getInstance();
+      const repoId = store.ensureRepository(rootPath).id;
+      const repoName = path.basename(rootPath);
       
       const lessons = store.getRecentLessons(repoId, 50);
       if (lessons.length === 0) return;
 
-      const wikiPath = path.join(config.vaultPath, "wiki", "concepts", `Engineering Mandates - ${repoId}.md`);
+      const wikiPath = path.join(config.vaultPath, "wiki", "concepts", `Engineering Mandates - ${safeFileStem(repoName)}.md`);
       const wikiDir = path.dirname(wikiPath);
       
       if (!fs.existsSync(wikiDir)) {
         fs.mkdirSync(wikiDir, { recursive: true });
       }
 
-      let content = `---\ntags: [engineering, mandates, ${repoId}]\n---\n\n`;
-      content += `# Engineering Mandates for ${repoId}\n\n`;
+      let content = `---\ntags: [engineering, mandates, ${repoName}]\n---\n\n`;
+      content += `# Engineering Mandates for ${repoName}\n\n`;
       content += `> [!info] Automatically extracted from successful project history by Promptimprover.\n\n`;
       
       for (const lesson of lessons) {
@@ -252,8 +253,12 @@ export class ObsidianOrchestrator {
       if (!content.includes("# Recent Context")) {
         content = header + "## Key Recent Facts\n" + changeLine;
       } else {
+      if (!content.includes("## Key Recent Facts")) {
+        content = content.replace("# Recent Context", "# Recent Context\n\n## Key Recent Facts") + "\n" + changeLine;
+      } else {
         const sections = content.split("## Key Recent Facts");
-        content = sections[0] + "## Key Recent Facts\n" + changeLine + sections[1];
+        content = sections[0] + "## Key Recent Facts\n" + changeLine + (sections[1] || "");
+      }
       }
 
       // Truncate if too long (rough word count check)
@@ -373,7 +378,7 @@ export class ObsidianOrchestrator {
   static async canvas(rootPath: string, name: string, data: any) {
     const config = ConfigManager.getObsidianConfig(rootPath);
     if (!config) return;
-    const canvasPath = path.join(config.vaultPath, `${name}.canvas`);
+    const canvasPath = safeVaultPath(config.vaultPath, `${safeFileStem(name)}.canvas`);
     
     let finalData = data;
     if (fs.existsSync(canvasPath)) {
@@ -430,4 +435,23 @@ export class ObsidianOrchestrator {
                   .replace(/<nav\b[^>]*>[\s\S]*?<\/nav>/gim, "")
                   .replace(/<footer\b[^>]*>[\s\S]*?<\/footer>/gim, "");
   }
+}
+
+function safeFileStem(name: string): string {
+  if (name.includes("/") || name.includes("\\") || name.includes("..")) {
+    throw new Error("Target path escapes Obsidian vault");
+  }
+  const stem = path.basename(name).replace(/[^a-z0-9 _.-]/gi, "_").trim();
+  return stem || "untitled";
+}
+
+function safeVaultPath(vaultPath: string, relativeFilePath: string): string {
+  const vaultRoot = path.resolve(vaultPath);
+  const target = path.resolve(vaultRoot, relativeFilePath);
+  const relative = path.relative(vaultRoot, target);
+  /* v8 ignore next 3 -- safeFileStem rejects path-like names before this defense-in-depth check. */
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    throw new Error("Target path escapes Obsidian vault");
+  }
+  return target;
 }

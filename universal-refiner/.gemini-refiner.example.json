@@ -1,5 +1,5 @@
 {
-  "_comment_usage": "Copy this file to .gemini-refiner.json and fill in your values. This file is safe to commit.",
+  "_comment_usage": "Legacy example only. Prefer .universal-refiner.example.json and copy that file to .universal-refiner.json. This file is safe to commit.",
   "_comment_fields": "All fields are optional. Omit a section to use built-in defaults.",
   "semantic": {
     "_comment": "Configure the local OpenAI-compatible provider (Ollama, LM Studio, etc.)",

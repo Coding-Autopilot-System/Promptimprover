@@ -45,6 +45,7 @@ export class NeuralSnippets {
         canonicalName = fs.realpathSync.native(name);
         if (!this.isWithinRoot(root, canonicalName)) continue;
       } catch (err) {
+        /* c8 ignore next */
         continue;
       }
 

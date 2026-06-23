@@ -179,6 +179,10 @@
     const escapeHtml = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const encodeCandidateId = (v) => encodeURIComponent(String(v)).replace(/'/g, '%27');
     const projectName = (p) => p.split(/[\\\/]/).filter(Boolean).pop() || 'ROOT';
+    const selectProject = (encodedProject) => {
+      currentProject = decodeURIComponent(encodedProject);
+      refreshData();
+    };
 
     function switchView(viewId) {
       document.querySelectorAll('.main-view').forEach(v => v.classList.add('hidden'));
@@ -199,13 +203,13 @@
       
       document.getElementById('project-badge').textContent = projectName(currentProject).toUpperCase();
       document.getElementById('project-dna').innerHTML = `
-        <div class="stat-row"><span class="stat-label">STACK</span><span>${state.stack}</span></div>
-        <div class="stat-row"><span class="stat-label">FRAMEWORK</span><span>${state.framework}</span></div>
-        <div class="stat-row"><span class="stat-label">PATTERN</span><span>${state.pattern}</span></div>
+        <div class="stat-row"><span class="stat-label">STACK</span><span>${escapeHtml(state.stack)}</span></div>
+        <div class="stat-row"><span class="stat-label">FRAMEWORK</span><span>${escapeHtml(state.framework)}</span></div>
+        <div class="stat-row"><span class="stat-label">PATTERN</span><span>${escapeHtml(state.pattern)}</span></div>
       `;
       
       document.getElementById('project-list').innerHTML = state.projects.map(p => 
-        `<div class="nav-item ${p === currentProject ? 'active' : ''}" onclick="currentProject='${p}';refreshData();" style="font-size: 0.7rem; margin-left: 0.5rem;">📂 ${projectName(p)}</div>`
+        `<div class="nav-item ${p === currentProject ? 'active' : ''}" onclick="selectProject('${encodeCandidateId(p)}')" style="font-size: 0.7rem; margin-left: 0.5rem;">📂 ${escapeHtml(projectName(p))}</div>`
       ).join('');
 
       // 2. View Specific Refresh
@@ -267,14 +271,14 @@
             <div style="display:flex; justify-content:space-between; align-items:flex-start;">
               <div>
                 <code style="color:var(--accent)">${c.sha.substring(0, 7)}</code> <strong>${escapeHtml(c.message)}</strong>
-                <div style="font-size:0.7rem; color:var(--dim); margin-top:4px;">by ${c.author} • ${new Date(c.committed_at).toLocaleString()}</div>
+                <div style="font-size:0.7rem; color:var(--dim); margin-top:4px;">by ${escapeHtml(c.author)} • ${new Date(c.committed_at).toLocaleString()}</div>
               </div>
               <div style="text-align:right">
                 <span class="diff-add">+${JSON.parse(c.diff_stats_json).insertions || 0}</span> 
                 <span class="diff-del">-${JSON.parse(c.diff_stats_json).deletions || 0}</span>
               </div>
             </div>
-            ${c.prompt_id ? `<div class="badge" style="margin-top:10px; display:inline-block">Linked to Prompt: ${c.prompt_id}</div>` : ''}
+            ${c.prompt_id ? `<div class="badge" style="margin-top:10px; display:inline-block">Linked to Prompt: ${escapeHtml(c.prompt_id)}</div>` : ''}
           </div>
         `).join('') || '<p style="color:var(--dim)">No commits ingested for this project.</p>';
       }

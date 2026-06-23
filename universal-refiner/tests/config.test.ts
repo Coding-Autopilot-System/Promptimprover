@@ -180,11 +180,17 @@ describe("ConfigManager", () => {
   });
 
   it("uses default-path overloads without requiring a config file", () => {
-    expect(ConfigManager.loadConfig()).toEqual({});
-    expect(ConfigManager.getSemanticConfig()).toMatchObject({
-      localEnabled: true,
-      mcpSamplingEnabled: true,
-    });
+    const previousCwd = process.cwd();
+    try {
+      process.chdir(tmpDir);
+      expect(ConfigManager.loadConfig()).toEqual({});
+      expect(ConfigManager.getSemanticConfig()).toMatchObject({
+        localEnabled: true,
+        mcpSamplingEnabled: true,
+      });
+    } finally {
+      process.chdir(previousCwd);
+    }
   });
 
   it("derives supported predictive mandates and ignores unsupported recurring keywords", () => {

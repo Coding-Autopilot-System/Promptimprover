@@ -67,11 +67,11 @@ describe("dashboard route coverage", () => {
 
   it("validates every review mutation boundary", async () => {
     const app = CommandCenterDashboard.createApp(repoDir);
-    const request = (route: string, body = "{}", headers: Record<string, string> = { "content-type": "application/json" }) =>
+    const request = (route: string, body = "{}", headers: Record<string, string> = { "content-type": "application/json", origin: "http://localhost" }) =>
       app.request(route, { method: "POST", headers, body });
 
     expect((await request("/api/review/unsupported/id", JSON.stringify({ decision: "approve" }))).status).toBe(400);
-    expect((await request("/api/review/lesson/id", "{}", {})).status).toBe(415);
+    expect((await request("/api/review/lesson/id", "{}", { origin: "http://localhost" })).status).toBe(415);
     expect((await request("/api/review/lesson/id", "{")).status).toBe(400);
     expect((await request("/api/review/lesson/id", JSON.stringify({ decision: "approve" }), {
       "content-type": "application/json",

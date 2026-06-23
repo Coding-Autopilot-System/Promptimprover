@@ -38,25 +38,78 @@ describe("ObsidianOrchestrator", () => {
     expect(ConfigManager.getObsidianConfig).toHaveBeenCalled();
   });
 
+  it("initWatchers returns when Obsidian is not configured", async () => {
+    vi.spyOn(ConfigManager, "getObsidianConfig").mockReturnValue(null);
+    await expect(ObsidianOrchestrator.initWatchers("C:/repo")).resolves.toBeUndefined();
+  });
+
+  it("initWatchers returns when the concepts directory is missing", async () => {
+    vi.spyOn(fs, "existsSync").mockReturnValue(false);
+    await expect(ObsidianOrchestrator.initWatchers("C:/repo")).resolves.toBeUndefined();
+  });
+
+  it("initWatchers closes an existing watcher before replacing it", async () => {
+    const previousWatcher = { close: vi.fn().mockResolvedValue(undefined) };
+    (ObsidianOrchestrator as any).watcher = previousWatcher;
+
+    await ObsidianOrchestrator.initWatchers("C:/repo");
+
+    expect(previousWatcher.close).toHaveBeenCalled();
+  });
+
+  it("reindex returns before initialization", async () => {
+    (ObsidianOrchestrator as any).searchIndex = null;
+    (ObsidianOrchestrator as any).db = null;
+
+    await expect((ObsidianOrchestrator as any).reindex("C:/test-vault")).resolves.toBeUndefined();
+  });
+
+  it("reindex returns when the concepts directory disappears after initialization", async () => {
+    (ObsidianOrchestrator as any).searchIndex = { add: vi.fn() };
+    (ObsidianOrchestrator as any).db = { tableNames: vi.fn() };
+    vi.spyOn(fs, "existsSync").mockReturnValue(false);
+
+    await expect((ObsidianOrchestrator as any).reindex("C:/test-vault")).resolves.toBeUndefined();
+  });
+
   it("syncToWiki extracts lessons and writes them to Obsidian", async () => {
-    const mockStore = { getRecentLessons: vi.fn().mockReturnValue([{ title: "L1", lesson_type: "T", confidence: 0.9, summary: "Sum" }]) };
+    const mockStore = {
+      ensureRepository: vi.fn().mockReturnValue({ id: "repo-canonical" }),
+      getRecentLessons: vi.fn().mockReturnValue([{ title: "L1", lesson_type: "T", confidence: 0.9, summary: "Sum" }])
+    };
     vi.spyOn(EventStore, "getInstance").mockReturnValue(mockStore as any);
     await ObsidianOrchestrator.syncToWiki("C:/repo");
-    expect(mockStore.getRecentLessons).toHaveBeenCalled();
+    expect(mockStore.getRecentLessons).toHaveBeenCalledWith("repo-canonical", 50);
     expect(fs.writeFileSync).toHaveBeenCalled();
   });
 
   it("syncToWiki does nothing if syncLessons is false", async () => {
     vi.spyOn(ConfigManager, "getObsidianConfig").mockReturnValue({ vaultPath: "C:/test-vault", syncLessons: false });
-    const mockStore = { getRecentLessons: vi.fn() };
+    const mockStore = { ensureRepository: vi.fn(), getRecentLessons: vi.fn() };
     vi.spyOn(EventStore, "getInstance").mockReturnValue(mockStore as any);
     await ObsidianOrchestrator.syncToWiki("C:/repo");
     expect(mockStore.getRecentLessons).not.toHaveBeenCalled();
   });
 
+  it("syncToWiki returns when there are no approved lessons", async () => {
+    const mockStore = {
+      ensureRepository: vi.fn().mockReturnValue({ id: "repo-canonical" }),
+      getRecentLessons: vi.fn().mockReturnValue([])
+    };
+    vi.spyOn(EventStore, "getInstance").mockReturnValue(mockStore as any);
+
+    await ObsidianOrchestrator.syncToWiki("C:/repo");
+
+    expect(mockStore.getRecentLessons).toHaveBeenCalledWith("repo-canonical", 50);
+    expect(fs.writeFileSync).not.toHaveBeenCalled();
+  });
+
   it("syncToWiki creates directory if it does not exist", async () => {
     vi.spyOn(fs, "existsSync").mockReturnValue(false); // mock dir not existing
-    const mockStore = { getRecentLessons: vi.fn().mockReturnValue([{ title: "L1", lesson_type: "T", confidence: 0.9, summary: "Sum" }]) };
+    const mockStore = {
+      ensureRepository: vi.fn().mockReturnValue({ id: "repo-canonical" }),
+      getRecentLessons: vi.fn().mockReturnValue([{ title: "L1", lesson_type: "T", confidence: 0.9, summary: "Sum" }])
+    };
     vi.spyOn(EventStore, "getInstance").mockReturnValue(mockStore as any);
     await ObsidianOrchestrator.syncToWiki("C:/repo");
     expect(fs.mkdirSync).toHaveBeenCalledWith(expect.any(String), { recursive: true });
@@ -64,7 +117,10 @@ describe("ObsidianOrchestrator", () => {
 
   it("syncToWiki catches and logs write errors", async () => {
     vi.spyOn(fs, "existsSync").mockReturnValue(true);
-    const mockStore = { getRecentLessons: vi.fn().mockReturnValue([{ title: "L1", lesson_type: "T", confidence: 0.9, summary: "Sum" }]) };
+    const mockStore = {
+      ensureRepository: vi.fn().mockReturnValue({ id: "repo-canonical" }),
+      getRecentLessons: vi.fn().mockReturnValue([{ title: "L1", lesson_type: "T", confidence: 0.9, summary: "Sum" }])
+    };
     vi.spyOn(EventStore, "getInstance").mockReturnValue(mockStore as any);
     vi.spyOn(fs, "writeFileSync").mockImplementation(() => { throw new Error("sync error"); });
     await ObsidianOrchestrator.syncToWiki("C:/repo");
@@ -99,6 +155,21 @@ describe("ObsidianOrchestrator", () => {
     expect(RuntimeLogger.error).toHaveBeenCalledWith("LanceDB reindex failed", expect.any(Error));
   });
 
+  it("initWatchers skips LanceDB writes when there are no markdown files", async () => {
+    const lancedb = await import("@lancedb/lancedb");
+    const createTable = vi.fn();
+    (lancedb.connect as any).mockResolvedValueOnce({
+      tableNames: vi.fn().mockResolvedValue([]),
+      createTable
+    });
+    vi.spyOn(fs, "readdirSync").mockReturnValue([] as any);
+
+    await ObsidianOrchestrator.initWatchers("C:/repo");
+    await new Promise(r => setTimeout(r, 50));
+
+    expect(createTable).not.toHaveBeenCalled();
+  });
+
   it("initWatchers listens to chokidar changes and triggers reindex", async () => {
     const chokidar = await import("chokidar");
     let changeCb: any;
@@ -129,6 +200,26 @@ describe("ObsidianOrchestrator", () => {
     expect(patterns[0].description).toBe("Test summary");
   });
 
+  it("getGlobalPatterns returns empty when Obsidian is not configured", () => {
+    vi.spyOn(ConfigManager, "getObsidianConfig").mockReturnValue(null);
+    expect(ObsidianOrchestrator.getGlobalPatterns("C:/repo")).toEqual([]);
+  });
+
+  it("getGlobalPatterns returns empty when concepts directory is missing", () => {
+    vi.spyOn(fs, "existsSync").mockReturnValue(false);
+    expect(ObsidianOrchestrator.getGlobalPatterns("C:/repo")).toEqual([]);
+  });
+
+  it("getGlobalPatterns defaults category when a type field is missing", () => {
+    vi.spyOn(fs, "readFileSync").mockReturnValue("## Title\n- **Summary**: Test summary\n");
+    expect(ObsidianOrchestrator.getGlobalPatterns("C:/repo")[0].category).toBe("general");
+  });
+
+  it("getGlobalPatterns ignores sections without summaries", () => {
+    vi.spyOn(fs, "readFileSync").mockReturnValue("## Title\nNo summary here\n");
+    expect(ObsidianOrchestrator.getGlobalPatterns("C:/repo")).toEqual([]);
+  });
+
   it("logActivity appends logs and updates hot cache", async () => {
     vi.spyOn(fs, "existsSync").mockReturnValue(false);
     await ObsidianOrchestrator.logActivity("C:/repo", "test summary", "test rationale");
@@ -136,11 +227,46 @@ describe("ObsidianOrchestrator", () => {
     expect(fs.writeFileSync).toHaveBeenCalled();
   });
 
+  it("logActivity returns early when Obsidian is not configured", async () => {
+    vi.spyOn(ConfigManager, "getObsidianConfig").mockReturnValue(null);
+    await expect(ObsidianOrchestrator.logActivity("C:/repo", "test summary")).resolves.toBeUndefined();
+    expect(fs.writeFileSync).not.toHaveBeenCalled();
+  });
+
   it("updateHotCache modifies hot.md", async () => {
     vi.spyOn(fs, "existsSync").mockReturnValue(true);
     vi.spyOn(fs, "readFileSync").mockReturnValue("# Recent Context\n\n## Key Recent Facts\n- old line");
     await ObsidianOrchestrator.updateHotCache("C:/repo", "new fact");
     expect(fs.writeFileSync).toHaveBeenCalled();
+  });
+
+  it("updateHotCache returns early when Obsidian is not configured", async () => {
+    vi.spyOn(ConfigManager, "getObsidianConfig").mockReturnValue(null);
+    await expect(ObsidianOrchestrator.updateHotCache("C:/repo", "new fact")).resolves.toBeUndefined();
+    expect(fs.writeFileSync).not.toHaveBeenCalled();
+  });
+
+  it("updateHotCache creates a facts section when the scaffolded file only has the main header", async () => {
+    vi.spyOn(fs, "existsSync").mockReturnValue(true);
+    vi.spyOn(fs, "readFileSync").mockReturnValue("# Recent Context");
+
+    await ObsidianOrchestrator.updateHotCache("C:/repo", "new fact");
+
+    const written = vi.mocked(fs.writeFileSync).mock.calls.at(-1)?.[1] as string;
+    expect(written).toContain("## Key Recent Facts");
+    expect(written).toContain("new fact");
+    expect(written).not.toContain("undefined");
+  });
+
+  it("updateHotCache handles an empty facts section without appending undefined", async () => {
+    vi.spyOn(fs, "existsSync").mockReturnValue(true);
+    vi.spyOn(fs, "readFileSync").mockReturnValue("# Recent Context\n\n## Key Recent Facts");
+
+    await ObsidianOrchestrator.updateHotCache("C:/repo", "new fact");
+
+    const written = vi.mocked(fs.writeFileSync).mock.calls.at(-1)?.[1] as string;
+    expect(written).toContain("new fact");
+    expect(written).not.toContain("undefined");
   });
 
   it("getHotCache returns hot.md content", () => {
@@ -200,6 +326,18 @@ describe("ObsidianOrchestrator", () => {
     const result = await ObsidianOrchestrator.canvas("C:/repo", "map", { type: "text", id: "n1", text: "update" });
     expect(result).toContain("Canvas [[map]] saved");
     expect(fs.writeFileSync).toHaveBeenCalledWith(expect.any(String), expect.stringContaining("update"));
+  });
+
+  it("canvas rejects names that would escape the configured vault", async () => {
+    await expect(ObsidianOrchestrator.canvas("C:/repo", "../outside", { nodes: [] }))
+      .rejects.toThrow("Target path escapes Obsidian vault");
+  });
+
+  it("canvas falls back to untitled when the sanitized name is empty", async () => {
+    vi.spyOn(fs, "existsSync").mockReturnValue(false);
+    const result = await ObsidianOrchestrator.canvas("C:/repo", "   ", { nodes: [] });
+    expect(result).toBe("Canvas [[   ]] saved.");
+    expect(fs.writeFileSync).toHaveBeenCalledWith(expect.stringContaining("untitled.canvas"), expect.any(String));
   });
 
   it("canvas adds new node to existing canvas", async () => {

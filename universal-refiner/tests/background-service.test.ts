@@ -10,19 +10,36 @@ const mocks = vi.hoisted(() => ({
   debug: vi.fn(),
   error: vi.fn(),
   dashboard: vi.fn(),
+  getObsidianConfig: vi.fn(),
+  syncToWiki: vi.fn(),
+  getApprovedLessonsWithExecutions: vi.fn(),
+  healAndRetry: vi.fn(),
   poller: { on: vi.fn(), start: vi.fn(), stop: vi.fn() },
   pollerConstructor: vi.fn(),
 }));
 
 vi.mock("chokidar", () => ({ watch: mocks.watch }));
-vi.mock("child_process", () => ({
-  exec: vi.fn((cmd, opts, cb) => cb(null, { stdout: "", stderr: "" }))
-}));
 vi.mock("../src/history/commit-ingest.js", () => ({ CommitIngester: { ingestLatest: mocks.ingest } }));
 vi.mock("../src/history/correlation-engine.js", () => ({ CorrelationEngine: class { correlateAll = mocks.correlate; } }));
 vi.mock("../src/history/lesson-extractor.js", () => ({ LessonExtractor: class { extractNewLessons = mocks.extract; extractFailureLessons = mocks.extract; } }));
 vi.mock("../src/core/logger.js", () => ({ RuntimeLogger: { info: mocks.info, debug: mocks.debug, error: mocks.error } }));
 vi.mock("../src/core/dashboard.js", () => ({ CommandCenterDashboard: { log: mocks.dashboard } }));
+vi.mock("../src/core/config.js", () => ({ ConfigManager: { getObsidianConfig: mocks.getObsidianConfig } }));
+vi.mock("../src/history/event-store.js", () => ({
+  EventStore: {
+    getInstance: () => ({
+      getApprovedLessonsWithExecutions: mocks.getApprovedLessonsWithExecutions,
+    }),
+  },
+}));
+vi.mock("../src/core/execution-orchestrator.js", () => ({
+  ExecutionOrchestrator: class {
+    healAndRetry = mocks.healAndRetry;
+  },
+}));
+vi.mock("../src/integrations/obsidian/obsidian-orchestrator.js", () => ({
+  ObsidianOrchestrator: { syncToWiki: mocks.syncToWiki },
+}));
 vi.mock("../src/history/git-poller.js", () => ({
   GitPoller: class {
     constructor(rootPath: string, interval: number) {
@@ -45,6 +62,10 @@ describe("BackgroundAutonomyService", () => {
     mocks.ingest.mockResolvedValue(2);
     mocks.correlate.mockResolvedValue(undefined);
     mocks.extract.mockResolvedValue(undefined);
+    mocks.getObsidianConfig.mockReturnValue(null);
+    mocks.getApprovedLessonsWithExecutions.mockReturnValue([]);
+    mocks.healAndRetry.mockResolvedValue(true);
+    mocks.syncToWiki.mockResolvedValue(undefined);
     AutoPilotStatus.reset();
   });
 
@@ -164,22 +185,46 @@ describe("BackgroundAutonomyService", () => {
   });
 
   it("syncs to obsidian vault on cycle complete", async () => {
-    const child_process = await import("child_process");
-    vi.mocked(child_process.exec).mockImplementationOnce((cmd, opts, cb) => cb!(null, { stdout: "synced", stderr: "" }) as any);
+    mocks.getObsidianConfig.mockReturnValue({ vaultPath: "C:/vault", syncLessons: true });
     const service = new BackgroundAutonomyService("C:/repo", vi.fn());
     service.start();
     await service.idle();
     service.stop();
+    expect(mocks.syncToWiki).toHaveBeenCalledWith("C:/repo");
     expect(mocks.dashboard).toHaveBeenCalledWith("Background Autonomy: Synced to Obsidian Vault.");
   });
 
   it("handles obsidian sync errors", async () => {
-    const child_process = await import("child_process");
-    vi.mocked(child_process.exec).mockImplementationOnce((cmd, opts, cb) => cb!(new Error("sync error"), { stdout: "", stderr: "" }) as any);
+    mocks.getObsidianConfig.mockReturnValue({ vaultPath: "C:/vault", syncLessons: true });
+    mocks.syncToWiki.mockRejectedValue(new Error("sync error"));
     const service = new BackgroundAutonomyService("C:/repo", vi.fn());
     service.start();
     await service.idle();
     service.stop();
     expect(mocks.dashboard).toHaveBeenCalledWith("Background Autonomy: Failed to sync to Obsidian Vault.");
+  });
+
+  it("runs approved failure self-healing lessons during the busy cycle", async () => {
+    mocks.getApprovedLessonsWithExecutions.mockReturnValue([{ id: "lesson-1", execution_id: "exec-1" }]);
+    const service = new BackgroundAutonomyService("C:/repo", vi.fn());
+
+    service.start();
+    await service.idle();
+    service.stop();
+
+    expect(mocks.healAndRetry).toHaveBeenCalledWith("exec-1", "lesson-1");
+  });
+
+  it("logs self-healing lookup failures without failing the autonomy cycle", async () => {
+    mocks.getApprovedLessonsWithExecutions.mockImplementation(() => {
+      throw new Error("lesson query failed");
+    });
+    const service = new BackgroundAutonomyService("C:/repo", vi.fn());
+
+    service.start();
+    await service.idle();
+    service.stop();
+
+    expect(mocks.error).toHaveBeenCalledWith("Self-healing failed", expect.any(Error));
   });
 });

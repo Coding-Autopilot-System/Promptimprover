@@ -9,9 +9,7 @@ import { CommandCenterDashboard } from "./dashboard.js";
 import { SerializedJobQueue } from "./job-queue.js";
 import { ExecutionOrchestrator } from "./execution-orchestrator.js";
 import { EventStore } from "../history/event-store.js";
-import { exec } from "child_process";
-import * as util from "util";
-const execAsync = util.promisify(exec);
+import { ConfigManager } from "./config.js";
 
 export class BackgroundAutonomyService {
   private watcher: chokidar.FSWatcher | null = null;
@@ -130,14 +128,7 @@ export class BackgroundAutonomyService {
       AutoPilotStatus.record("Cycle complete", "cycle_complete");
       CommandCenterDashboard.log("Background Autonomy: Correlation, lesson extraction, and self-healing complete.");
 
-      try {
-        await execAsync("npx tsx scripts/obsidian-sync.ts", { cwd: this.rootPath });
-        CommandCenterDashboard.log("Background Autonomy: Synced to Obsidian Vault.");
-        AutoPilotStatus.record("Synced to Obsidian Vault", "cycle_complete");
-      } catch (syncError) {
-        RuntimeLogger.error("Failed to sync to Obsidian", syncError);
-        CommandCenterDashboard.log("Background Autonomy: Failed to sync to Obsidian Vault.");
-      }
+      await this.syncObsidian();
 
     } catch (error) {
       AutoPilotStatus.setIdle();
@@ -149,16 +140,8 @@ export class BackgroundAutonomyService {
   }
 
   private async attemptSelfHealing(orchestrator: ExecutionOrchestrator) {
-    if (AutoPilotStatus.getSnapshot().state !== "active") return;
-
     try {
-      const db = (EventStore.getInstance() as any).db;
-      // Find recently approved lessons that target an execution
-      const lessons = db.prepare(`
-        SELECT id, execution_id FROM lessons 
-        WHERE approved = 1 AND execution_id IS NOT NULL
-        ORDER BY created_at DESC LIMIT 10
-      `).all();
+      const lessons = EventStore.getInstance().getApprovedLessonsWithExecutions(10);
 
       for (const lesson of lessons) {
         // Heal and retry
@@ -166,6 +149,23 @@ export class BackgroundAutonomyService {
       }
     } catch (error) {
       RuntimeLogger.error("Self-healing failed", error);
+    }
+  }
+
+  private async syncObsidian() {
+    const obsidianConfig = ConfigManager.getObsidianConfig(this.rootPath);
+    if (!obsidianConfig?.syncLessons) {
+      return;
+    }
+
+    try {
+      const { ObsidianOrchestrator } = await import("../integrations/obsidian/obsidian-orchestrator.js");
+      await ObsidianOrchestrator.syncToWiki(this.rootPath);
+      CommandCenterDashboard.log("Background Autonomy: Synced to Obsidian Vault.");
+      AutoPilotStatus.record("Synced to Obsidian Vault", "cycle_complete");
+    } catch (syncError) {
+      RuntimeLogger.error("Failed to sync to Obsidian", syncError);
+      CommandCenterDashboard.log("Background Autonomy: Failed to sync to Obsidian Vault.");
     }
   }
 

@@ -168,7 +168,7 @@ describe("dashboard deterministic fallbacks", () => {
       `/api/review/${kind}/${id}`,
       {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", origin: "http://localhost" },
         body: JSON.stringify({ decision }),
       },
     );

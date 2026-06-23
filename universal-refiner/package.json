@@ -45,7 +45,10 @@
     "dependencies": {
         "@hono/node-server": "^1.19.13",
         "@modelcontextprotocol/sdk": "^1.29.0",
+        "@lancedb/lancedb": "^0.30.0",
         "better-sqlite3": "^12.8.0",
+        "chokidar": "^5.0.0",
+        "flexsearch": "^0.8.212",
         "hono": "^4.12.25",
         "typescript": "^5.9.3",
         "zod": "^4.3.6"
@@ -53,12 +56,9 @@
     "devDependencies": {
         "@emnapi/core": "^1.11.1",
         "@emnapi/runtime": "^1.11.1",
-        "@lancedb/lancedb": "^0.30.0",
         "@types/better-sqlite3": "^7.6.13",
         "@types/node": "^22.19.17",
         "@vitest/coverage-v8": "4.1.4",
-        "chokidar": "^5.0.0",
-        "flexsearch": "^0.8.212",
         "ts-node": "^10.9.2",
         "vitest": "^4.1.4"
     },

@@ -58,11 +58,22 @@ export class TimelineProvider {
 
     const unified: TimelineEntry[] = [
       ...prompts.map((p: any) => ({ ...p, details: { intent: p.event_type, normalized_prompt: p.details } })),
-      ...commits.map((c: any) => ({ ...c, details: { files: JSON.parse(c.details || "[]") } })),
-      ...events.map((e: any) => ({ ...e, details: JSON.parse(e.details || "{}") })),
-      ...executions.map((x: any) => ({ ...x, details: JSON.parse(x.details || "{}") }))
+      ...commits.map((c: any) => ({ ...c, details: { files: safeJsonParse(c.details, []) } })),
+      ...events.map((e: any) => ({ ...e, details: safeJsonParse(e.details, {}) })),
+      ...executions.map((x: any) => ({ ...x, details: safeJsonParse(x.details, {}) }))
     ];
 
     return unified.sort((a, b) => b.timestamp.localeCompare(a.timestamp)).slice(0, limit);
+  }
+}
+
+function safeJsonParse<T>(value: unknown, fallback: T): T {
+  if (typeof value !== "string" || value.length === 0) {
+    return fallback;
+  }
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
   }
 }
