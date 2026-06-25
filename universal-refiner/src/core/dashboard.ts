@@ -37,6 +37,11 @@ interface DashboardState {
   stack: string;
   framework: string;
   pattern: string;
+  stats: {
+    commits: number;
+    prompts: number;
+    lessons: number;
+  };
 }
 
 interface SemanticEventDetails {
@@ -140,6 +145,18 @@ export class CommandCenterDashboard {
     const arch = await ArchitecturalScout.detectPatterns(selectedPath);
     const node = await NodeDetector.detect(selectedPath);
     const py = await PythonDetector.detect(selectedPath);
+
+    const store = EventStore.getInstance();
+    const repoId = store.ensureRepository(selectedPath).id;
+
+    // Fallbacks in case the table is missing or errors out during initialization
+    let stats = { commits: 0, prompts: 0, lessons: 0 };
+    try {
+      stats = store.getRepositoryStats(repoId);
+    } catch (e) {
+      RuntimeLogger.warn("Failed to retrieve dashboard stats from db", e);
+    }
+
     return {
       selectedPath,
       projects: visibleProjects,
@@ -148,8 +165,9 @@ export class CommandCenterDashboard {
       intents: AgenticBlackboard.getActiveIntents(selectedPath),
       lastRefinement: AgenticBlackboard.getLastRefinement(selectedPath),
       stack: node.language || py.language || "Unknown",
-      framework: node.framework || py.framework || "None",
-      pattern: arch.length > 0 ? arch.slice(0, 1).join(", ") : "Standard"
+      framework: node.framework || py.framework || "Unknown",
+      pattern: arch.length > 0 ? arch.slice(0, 1).join(", ") : "Standard",
+      stats,
     };
   }
 
@@ -419,22 +437,49 @@ export class CommandCenterDashboard {
           return c.json({ error: "Proxy request body must be valid JSON" }, 400);
         }
 
-        const messages = Array.isArray(body.messages) ? body.messages : [];
-        const lastMessage = messages[messages.length - 1];
-        const rawPrompt = typeof lastMessage?.content === "string" && lastMessage.content.trim()
-          ? lastMessage.content
-          : "Unknown proxy prompt";
-
         const store = EventStore.getInstance();
         const repoId = store.ensureRepository(selectedPath).id;
+
+        // Extract prompt
+        const messages = Array.isArray(body.messages) ? body.messages : [];
+        const lastMessage = messages[messages.length - 1];
+        const originalPrompt = typeof lastMessage?.content === "string" && lastMessage.content.trim()
+          ? lastMessage.content
+          : "Unknown proxy prompt";
+        let forwardedPrompt = originalPrompt;
+
+        // Attempt Minified Template Caching Swap
+        const templates = store.getTemplates(repoId).filter(t => t.approved === 1 && t.deprecated === 0);
+        let wasMinified = false;
+        for (const tpl of templates) {
+          if (tpl.category !== "Minified" || !tpl.usageNotes) {
+            continue;
+          }
+          let matchesTemplate = false;
+          try {
+            matchesTemplate = new RegExp(tpl.usageNotes).test(originalPrompt);
+          } catch (error) {
+            RuntimeLogger.warn("Ignoring invalid minified template usage regex", { templateId: tpl.id, error });
+          }
+          if (matchesTemplate) {
+            forwardedPrompt = tpl.templateText;
+            if (lastMessage && typeof lastMessage.content === "string") {
+              lastMessage.content = forwardedPrompt;
+            }
+            wasMinified = true;
+            break;
+          }
+        }
+
         const promptId = `prm_${randomUUID()}`;
         const execId = `exec_${randomUUID()}`;
         store.recordPrompt({
           id: promptId,
           client: "API_PROXY",
           agent_name: "ProxyClient",
-          raw_prompt: rawPrompt,
-          repo_id: repoId,
+          raw_prompt: originalPrompt,
+          normalized_prompt: wasMinified ? forwardedPrompt : undefined,
+          repo_id: repoId
         });
 
         const upstreamUrl = new URL("chat/completions", upstreamBase).toString();
@@ -621,7 +666,7 @@ export class CommandCenterDashboard {
         if (!found) {
           throw new Error(`Could not find dashboard.html in any of: ${possiblePaths.join(", ")}`);
         }
-        
+
         // Inject data and version
         html = html.replace("{{STATE_JSON}}", serializedState);
         html = html.replace("V1.0.0", `V${getDisplayVersion()}`);

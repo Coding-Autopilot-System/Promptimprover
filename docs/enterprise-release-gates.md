@@ -17,14 +17,15 @@ For exact operator commands, current evidence, and the gate-to-CI mapping, see [
 2. TypeScript build succeeds with strict type checking.
 3. Unit and integration tests pass with the enforced coverage threshold.
 4. Every advertised MCP tool schema and dispatcher path passes acceptance tests.
-5. Local semantic-provider primary, fallback, malformed-response, timeout, and outage paths pass.
-6. SQLite restart, migration, backup/restore, contention, and multi-process tests pass.
-7. Claude and Gemini hook pre/post flows pass; Codex MCP-first flow passes.
-8. Dashboard API security, review mutation, health telemetry, and browser smoke flows pass.
-9. Dependency audit reports no known production or development vulnerabilities at high severity or above.
-10. Package dry-run plus `acceptance:package-runtime` global installation, runtime startup, and health smoke tests pass.
-11. Secret scanning finds no committed credentials.
-12. Linux and Windows CI jobs pass before merge.
+5. The built MCP stdio server starts as a real child process, lists tools, and handles `lint_prompt`.
+6. Local semantic-provider primary, fallback, malformed-response, timeout, and outage paths pass.
+7. SQLite restart, migration, backup/restore, contention, and multi-process tests pass.
+8. Claude and Gemini hook pre/post flows pass; Codex MCP-first flow passes.
+9. Dashboard API security, review mutation, health telemetry, and Chromium browser smoke flows pass.
+10. Dependency audit reports no known production or development vulnerabilities at high severity or above.
+11. Package dry-run plus `acceptance:package-runtime` global installation, runtime startup, and health smoke tests pass.
+12. Secret scanning finds no committed credentials.
+13. Linux, Windows, and dashboard E2E CI jobs pass before merge.
 
 ## Current Coverage Baseline
 

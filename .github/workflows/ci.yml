@@ -67,6 +67,28 @@ jobs:
         run: npm run acceptance:semantic
       - name: Run tracked-turn acceptance
         run: npm run acceptance:tracked-turn
+      - name: Run real stdio MCP acceptance
+        run: npm run acceptance:stdio-mcp
+
+  dashboard-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: universal-refiner
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: universal-refiner/package-lock.json
+      - run: npm ci --no-fund
+      - run: npm rebuild better-sqlite3
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - name: Run dashboard browser E2E
+        run: npm run test:e2e
 
   stress:
     runs-on: ubuntu-latest
@@ -116,6 +138,7 @@ jobs:
       - run: npm run test:acceptance
       - run: npm run acceptance:semantic
       - run: npm run acceptance:tracked-turn
+      - run: npm run acceptance:stdio-mcp
       - run: npm run test:stress
       - run: npm run stress:event-store
       - run: npm run recovery:event-store:abrupt
@@ -145,19 +168,21 @@ jobs:
 
   release-gate:
     if: always()
-    needs: [build-and-test, acceptance, stress, windows, supply-chain]
+    needs: [build-and-test, acceptance, dashboard-e2e, stress, windows, supply-chain]
     runs-on: ubuntu-latest
     steps:
       - name: Require every enterprise gate
         env:
           BUILD: ${{ needs['build-and-test'].result }}
           ACCEPTANCE: ${{ needs.acceptance.result }}
+          DASHBOARD_E2E: ${{ needs['dashboard-e2e'].result }}
           STRESS: ${{ needs.stress.result }}
           WINDOWS: ${{ needs.windows.result }}
           SUPPLY_CHAIN: ${{ needs['supply-chain'].result }}
         run: |
           test "$BUILD" = "success"
           test "$ACCEPTANCE" = "success"
+          test "$DASHBOARD_E2E" = "success"
           test "$STRESS" = "success"
           test "$WINDOWS" = "success"
           test "$SUPPLY_CHAIN" = "success"

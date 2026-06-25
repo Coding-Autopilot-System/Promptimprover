@@ -10,6 +10,7 @@ import { SerializedJobQueue } from "./job-queue.js";
 import { ExecutionOrchestrator } from "./execution-orchestrator.js";
 import { EventStore } from "../history/event-store.js";
 import { ConfigManager } from "./config.js";
+import { TokenMinifier } from "../refiners/minifier.js";
 
 export class BackgroundAutonomyService {
   private watcher: chokidar.FSWatcher | null = null;
@@ -102,6 +103,7 @@ export class BackgroundAutonomyService {
 
       const engine = new CorrelationEngine();
       const extractor = new LessonExtractor(this.requestModelText);
+      const minifier = new TokenMinifier(this.requestModelText);
       const lessonsBefore = AutoPilotStatus.getSnapshot().stats.lessonsExtracted;
       const orchestrator = new ExecutionOrchestrator(EventStore.getInstance(), this.requestModelText);
       
@@ -109,6 +111,7 @@ export class BackgroundAutonomyService {
         engine.correlateAll(),
         extractor.extractNewLessons(),
         extractor.extractFailureLessons(),
+        minifier.minifyVerbosePrompts()
       ]);
 
       const rejected = results.find((result): result is PromiseRejectedResult => result.status === "rejected");

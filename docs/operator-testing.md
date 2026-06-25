@@ -53,6 +53,8 @@ Do not lower coverage thresholds to merge a feature. If a defect is reproduced, 
 | MCP acceptance | `npm.cmd run test:acceptance` | Advertised MCP tool schemas and dispatcher paths | `acceptance`, `windows` |
 | Semantic fallback | `npm.cmd run acceptance:semantic` | local provider ordering, fallback, malformed response, timeout, outage | `acceptance`, `windows` |
 | Tracked turn | `npm.cmd run acceptance:tracked-turn` | prompt ID and SQLite outcome linkage | `acceptance`, `windows` |
+| Real stdio MCP | `npm.cmd run acceptance:stdio-mcp` | built `dist/src/index.js` over real MCP stdio, tool listing, and `lint_prompt` call | `acceptance`, `windows` |
+| Dashboard browser E2E | `npm.cmd run test:e2e` | dashboard load, navigation, pulse bar, and proxy prompt stream rendering in Chromium | `dashboard-e2e`, local operator |
 | Stress tests | `npm.cmd run test:stress` | concurrent and long-running behavior | `stress`, `windows` |
 | EventStore stress | `npm.cmd run stress:event-store` | SQLite contention and multi-process behavior | `stress`, `windows` |
 | Abrupt recovery | `npm.cmd run recovery:event-store:abrupt` | interrupted writer recovery | `stress`, `windows` |
@@ -84,6 +86,8 @@ Expected result:
 - MCP tool acceptance passes.
 - Semantic fallback acceptance passes.
 - Tracked-turn acceptance links a `prm_...` prompt ID in SQLite.
+- Real stdio MCP smoke lists tools and calls `lint_prompt`.
+- Dashboard browser E2E passes in Chromium.
 - EventStore stress, abrupt recovery, and soak pass.
 - Production and full dependency audits report zero high-or-higher vulnerabilities.
 - Secret scan passes.
@@ -210,6 +214,7 @@ Expected result:
 
 - `build-and-test` passes.
 - Both acceptance matrix jobs pass.
+- `dashboard-e2e` passes.
 - `stress` passes.
 - `windows` passes.
 - `supply-chain` passes.

@@ -60,6 +60,9 @@ describe("dashboard deterministic fallbacks", () => {
     vi.spyOn(ArchitecturalScout, "detectPatterns").mockResolvedValue([]);
     vi.spyOn(NodeDetector, "detect").mockResolvedValue({});
     vi.spyOn(PythonDetector, "detect").mockResolvedValue({});
+    vi.spyOn(store, "getRepositoryStats").mockImplementationOnce(() => {
+      throw new Error("stats unavailable");
+    });
     CommandCenterDashboard.createApp(directory);
 
     const state = await (CommandCenterDashboard as any).buildState(directory);
@@ -68,8 +71,9 @@ describe("dashboard deterministic fallbacks", () => {
       selectedPath: directory,
       globalLogs: [],
       stack: "Unknown",
-      framework: "None",
+      framework: "Unknown",
       pattern: "Standard",
+      stats: { commits: 0, prompts: 0, lessons: 0 },
     });
     expect(state.projects).toEqual([path.resolve(directory)]);
   });

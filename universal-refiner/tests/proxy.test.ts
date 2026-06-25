@@ -187,6 +187,93 @@ describe("dashboard OpenAI-compatible proxy route", () => {
     expect(failure.artifacts_json).toContain("token=[REDACTED]");
   });
 
+  it("uses approved minified templates transparently and ignores invalid template regexes", async () => {
+    const repoId = store.ensureRepository(repoDir).id;
+    store.recordTemplate({
+      id: "non-minified",
+      repo_id: repoId,
+      category: "Feature",
+      title: "Non-minified",
+      template_text: "feature",
+      usage_notes: "^Verbose prompt$",
+      source_type: "test",
+      success_score: 200,
+      approved: 1,
+    });
+    store.recordTemplate({
+      id: "bad-regex",
+      repo_id: repoId,
+      category: "Minified",
+      title: "Bad regex",
+      template_text: "bad",
+      usage_notes: "[",
+      source_type: "test",
+      success_score: 150,
+      approved: 1,
+    });
+    store.recordTemplate({
+      id: "approved-minified",
+      repo_id: repoId,
+      category: "Minified",
+      title: "Approved minified",
+      template_text: "Short prompt",
+      usage_notes: "^Verbose prompt$",
+      source_type: "test",
+      success_score: 100,
+      approved: 1,
+    });
+    const fetchMock = vi.fn().mockResolvedValue(new Response("ok", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const app = CommandCenterDashboard.createApp(repoDir);
+
+    const response = await app.request("/proxy/v1/chat/completions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ messages: [{ role: "user", content: "Verbose prompt" }] }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledWith("http://127.0.0.1:9000/v1/chat/completions", expect.objectContaining({
+      body: JSON.stringify({ messages: [{ role: "user", content: "Short prompt" }] }),
+    }));
+    const db = (store as any).db;
+    expect(db.prepare("SELECT raw_prompt, normalized_prompt FROM prompts WHERE client = ?").get("API_PROXY"))
+      .toEqual({ raw_prompt: "Verbose prompt", normalized_prompt: "Short prompt" });
+  });
+
+  it("records a matching minified fallback without mutating non-string message content", async () => {
+    const repoId = store.ensureRepository(repoDir).id;
+    store.recordTemplate({
+      id: "unknown-minified",
+      repo_id: repoId,
+      category: "Minified",
+      title: "Unknown fallback",
+      template_text: "Short fallback",
+      usage_notes: "^Unknown proxy prompt$",
+      source_type: "test",
+      success_score: 100,
+      approved: 1,
+    });
+    const fetchMock = vi.fn().mockResolvedValue(new Response("ok", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const app = CommandCenterDashboard.createApp(repoDir);
+    const body = { messages: [{ role: "user", content: { text: "not a string" } }] };
+
+    const response = await app.request("/proxy/v1/chat/completions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledWith("http://127.0.0.1:9000/v1/chat/completions", expect.objectContaining({
+      body: JSON.stringify(body),
+    }));
+    const db = (store as any).db;
+    expect(db.prepare("SELECT raw_prompt, normalized_prompt FROM prompts WHERE client = ?").get("API_PROXY"))
+      .toEqual({ raw_prompt: "Unknown proxy prompt", normalized_prompt: "Short fallback" });
+  });
+
   it("returns a sanitized route failure when proxy bookkeeping fails", async () => {
     const app = CommandCenterDashboard.createApp(repoDir);
     vi.spyOn(EventStore, "getInstance").mockImplementationOnce(() => {

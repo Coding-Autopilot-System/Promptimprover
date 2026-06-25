@@ -29,6 +29,7 @@ vi.mock("../src/history/event-store.js", () => ({
   EventStore: {
     getInstance: () => ({
       getApprovedLessonsWithExecutions: mocks.getApprovedLessonsWithExecutions,
+      getLatestPrompts: vi.fn().mockReturnValue([])
     }),
   },
 }));

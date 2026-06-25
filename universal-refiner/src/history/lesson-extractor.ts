@@ -38,7 +38,7 @@ export class LessonExtractor {
 
   async extractNewLessons() {
     const db = (this.eventStore as any).db;
-    
+
     // 1. Find linked prompt-commit pairs that don't have a lesson yet
     const unanalyzedPairs = db.prepare(`
       SELECT p.id as prompt_id, p.raw_prompt, p.intent, c.id as commit_id, c.message, c.changed_files_json, c.repo_id, e.id as execution_id
@@ -96,7 +96,7 @@ Output ONLY the JSON object.
         confidence: string;
       }>(response);
       const lessonId = stableLessonId("auto-extracted", pair.repo_id, pair.prompt_id, pair.execution_id, pair.commit_id);
-      
+
       this.eventStore.recordLesson({
         id: lessonId,
         repo_id: pair.repo_id,

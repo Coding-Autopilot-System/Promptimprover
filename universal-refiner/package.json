@@ -17,6 +17,7 @@
         "test": "vitest run",
         "test:coverage": "vitest run --coverage",
         "test:acceptance": "vitest run tests/acceptance",
+        "test:e2e": "playwright test",
         "test:stress": "vitest run tests/stress",
         "security:secrets": "node scripts/security/scan-secrets.mjs",
         "security:audit": "npm audit --omit=dev --audit-level=high",
@@ -28,10 +29,11 @@
         "acceptance:semantic": "node scripts/acceptance/semantic-provider-acceptance.mjs",
         "acceptance:gemma:live": "node scripts/acceptance/semantic-provider-acceptance.mjs --require-live",
         "acceptance:tracked-turn": "node scripts/acceptance/tracked-turn-acceptance.mjs",
+        "acceptance:stdio-mcp": "node scripts/acceptance/stdio-mcp-smoke.mjs",
         "acceptance:package-runtime": "node scripts/acceptance/package-runtime-smoke.mjs",
         "stress:event-store": "node scripts/stress/event-store-stress.mjs",
         "stress:event-store:soak": "node scripts/stress/event-store-soak.mjs",
-        "release:verify": "npm run build && npm run test:coverage && npm run test:acceptance && npm run acceptance:semantic && npm run acceptance:tracked-turn && npm run test:stress && npm run stress:event-store && npm run recovery:event-store:abrupt && npm run stress:event-store:soak && npm run security:audit && npm run security:audit:all && npm run security:secrets && npm run package:check && npm run acceptance:package-runtime"
+        "release:verify": "npm run build && npm run test:coverage && npm run test:acceptance && npm run acceptance:semantic && npm run acceptance:tracked-turn && npm run acceptance:stdio-mcp && npm run test:e2e && npm run test:stress && npm run stress:event-store && npm run recovery:event-store:abrupt && npm run stress:event-store:soak && npm run security:audit && npm run security:audit:all && npm run security:secrets && npm run package:check && npm run acceptance:package-runtime"
     },
     "keywords": [
         "mcp",
@@ -44,8 +46,8 @@
     "type": "module",
     "dependencies": {
         "@hono/node-server": "^1.19.13",
-        "@modelcontextprotocol/sdk": "^1.29.0",
         "@lancedb/lancedb": "^0.30.0",
+        "@modelcontextprotocol/sdk": "^1.29.0",
         "better-sqlite3": "^12.8.0",
         "chokidar": "^5.0.0",
         "flexsearch": "^0.8.212",
@@ -56,6 +58,7 @@
     "devDependencies": {
         "@emnapi/core": "^1.11.1",
         "@emnapi/runtime": "^1.11.1",
+        "@playwright/test": "^1.61.1",
         "@types/better-sqlite3": "^7.6.13",
         "@types/node": "^22.19.17",
         "@vitest/coverage-v8": "4.1.4",

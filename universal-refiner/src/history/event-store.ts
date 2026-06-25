@@ -79,7 +79,7 @@ export class EventStore {
   }) {
     const stmt = this.db.prepare(`
       INSERT INTO events (
-        id, event_type, repo_id, session_id, prompt_id, execution_id, commit_id, 
+        id, event_type, repo_id, session_id, prompt_id, execution_id, commit_id,
         timestamp, severity, summary, details_json
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
@@ -149,6 +149,37 @@ export class EventStore {
       timestamp: timestamp,
       summary: `Prompt received from ${prompt.client}: ${prompt.raw_prompt.substring(0, 50)}...`
     });
+    return prompt.id;
+  }
+
+  getLatestPrompts(limit: number = 50): any[] {
+    return this.db.prepare(`
+      SELECT * FROM prompts
+      ORDER BY timestamp DESC
+      LIMIT ?
+    `).all(limit);
+  }
+
+  getTemplatesForPrompt(repoId: string, rawPrompt: string): any[] {
+    // Escaping regex syntax to just search for exact match via trigger_regex
+    const escaped = rawPrompt.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const exactRegex = "^" + escaped + "$";
+    return this.db.prepare(`
+      SELECT * FROM prompt_templates
+      WHERE repo_id = ? AND usage_notes = ?
+    `).all(repoId, exactRegex);
+  }
+
+  getRepositoryStats(repoId: string): { commits: number; prompts: number; lessons: number } {
+    const count = (table: "commits" | "prompts" | "lessons") => {
+      const row = this.db.prepare(`SELECT count(*) as count FROM ${table} WHERE repo_id = ?`).get(repoId) as { count: number } | undefined;
+      return row?.count || 0;
+    };
+    return {
+      commits: count("commits"),
+      prompts: count("prompts"),
+      lessons: count("lessons"),
+    };
   }
 
   recordExecution(execution: {
@@ -191,9 +222,9 @@ export class EventStore {
 
   getLastCommitSha(repoId: string): string | null {
     const stmt = this.db.prepare(`
-      SELECT sha FROM commits 
-      WHERE repo_id = ? 
-      ORDER BY committed_at DESC 
+      SELECT sha FROM commits
+      WHERE repo_id = ?
+      ORDER BY committed_at DESC
       LIMIT 1
     `);
     const row = stmt.get(repoId) as { sha: string } | undefined;
@@ -202,9 +233,9 @@ export class EventStore {
 
   getExecutionByPromptId(promptId: string): any | null {
     const stmt = this.db.prepare(`
-      SELECT * FROM executions 
-      WHERE prompt_id = ? 
-      ORDER BY started_at DESC 
+      SELECT * FROM executions
+      WHERE prompt_id = ?
+      ORDER BY started_at DESC
       LIMIT 1
     `);
     return stmt.get(promptId) || null;
@@ -270,7 +301,7 @@ export class EventStore {
   }) {
     const fields: string[] = [];
     const values: any[] = [];
-    
+
     if (execution.status) { fields.push("status = ?"); values.push(execution.status); }
     if (execution.ended_at) { fields.push("ended_at = ?"); values.push(execution.ended_at); }
     if (execution.result_summary) { fields.push("result_summary = ?"); values.push(execution.result_summary); }
@@ -279,7 +310,7 @@ export class EventStore {
     if (fields.length === 0) return;
 
     const stmt = this.db.prepare(`
-      UPDATE executions 
+      UPDATE executions
       SET ${fields.join(", ")}
       WHERE id = ?
     `);
@@ -347,7 +378,7 @@ export class EventStore {
   }) {
     const stmt = this.db.prepare(`
       INSERT INTO lessons (
-        id, repo_id, prompt_id, execution_id, commit_id, lesson_type, title, summary, 
+        id, repo_id, prompt_id, execution_id, commit_id, lesson_type, title, summary,
         evidence_json, confidence, source, approved, created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
@@ -450,12 +481,14 @@ export class EventStore {
     usage_notes: string;
     source_type: string;
     success_score: number;
+    approved?: number;
+    deprecated?: number;
   }) {
     const now = new Date().toISOString();
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO prompt_templates (
-        id, repo_id, cluster_id, category, title, template_text, usage_notes, source_type, success_score, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        id, repo_id, cluster_id, category, title, template_text, usage_notes, source_type, success_score, approved, deprecated, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     stmt.run(
       template.id,
@@ -467,6 +500,8 @@ export class EventStore {
       template.usage_notes,
       template.source_type,
       template.success_score,
+      template.approved !== undefined ? template.approved : 0,
+      template.deprecated !== undefined ? template.deprecated : 0,
       now,
       now
     );
@@ -521,10 +556,10 @@ export class EventStore {
 
   getRecentLessons(repoId: string, limit = 10): any[] {
     const stmt = this.db.prepare(`
-      SELECT * FROM lessons 
-      WHERE repo_id = ? 
+      SELECT * FROM lessons
+      WHERE repo_id = ?
       AND approved = 1
-      ORDER BY created_at DESC 
+      ORDER BY created_at DESC
       LIMIT ?
     `);
     return stmt.all(repoId, limit);
@@ -537,7 +572,7 @@ export class EventStore {
         FROM lessons WHERE repo_id = ? AND approved = 0 ORDER BY created_at DESC
       `).all(repoId),
       templates: this.db.prepare(`
-        SELECT id, category, title, template_text, usage_notes, success_score, source_type, created_at
+        SELECT id, category, title, template_text, usage_notes, success_score, source_type, approved, deprecated, created_at
         FROM prompt_templates WHERE repo_id = ? AND approved = 0 AND deprecated = 0 ORDER BY created_at DESC
       `).all(repoId),
     };
