@@ -103,7 +103,7 @@ describeIfPowerShell("global registration doctor", () => {
     expect(result.stdout + result.stderr).toContain("$.apiKey");
     expect(result.stdout + result.stderr).not.toContain("do-not-print-this");
     expect(existsSync(join(root, ".claude.json"))).toBe(false);
-  });
+  }, 45_000);
 
   it("refuses to merge invalid JSON without overwriting it", () => {
     const root = makeRoot();

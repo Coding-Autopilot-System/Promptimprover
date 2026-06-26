@@ -6,8 +6,9 @@ import { RuntimeLogger } from "./core/logger.js";
 import * as path from "path";
 import { AgenticBlackboard } from "./core/blackboard.js";
 import { EventStore } from "./history/event-store.js";
+import { resolveDashboardPort } from "./core/ports.js";
 
-const port = parseInt(process.env.PORT || "3000", 10);
+const port = resolveDashboardPort();
 const rootPath = path.resolve(process.cwd());
 const backgroundMode = process.env.PROMPT_REFINER_BACKGROUND === "true";
 if (backgroundMode) {

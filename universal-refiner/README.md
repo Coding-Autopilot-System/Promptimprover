@@ -9,11 +9,15 @@ model or MCP sampling fallback.
 ```powershell
 # From the universal-refiner directory
 npm run build
+$env:PROMPT_REFINER_BACKGROUND = 'true'
+$env:PROMPT_REFINER_DASHBOARD_PORT = '3000'
 node dist/src/index.js
 ```
 
 The server registers as an MCP stdio transport. Global registration is managed by
 `scripts/operations/register-global.ps1`.
+
+The operator dashboard is fixed at `http://127.0.0.1:3000`. Use `PROMPT_REFINER_DASHBOARD_PORT` only when intentionally testing an alternate local port; the generic `PORT` variable remains a compatibility fallback.
 
 ## Local Model Configuration
 

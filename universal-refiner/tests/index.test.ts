@@ -61,6 +61,7 @@ describe("runtime bootstrap", () => {
     mocks.dashboardStop.mockResolvedValue(undefined);
     mocks.flush.mockResolvedValue(undefined);
     delete process.env.PORT;
+    delete process.env.PROMPT_REFINER_DASHBOARD_PORT;
     delete process.env.PROMPT_REFINER_BACKGROUND;
   });
 
@@ -90,6 +91,7 @@ describe("runtime bootstrap", () => {
   });
 
   it("starts background ownership explicitly and exits on fatal server failure", async () => {
+    process.env.PROMPT_REFINER_DASHBOARD_PORT = "3000";
     process.env.PORT = "4321";
     process.env.PROMPT_REFINER_BACKGROUND = "true";
     const error = new Error("startup failed");
@@ -100,7 +102,7 @@ describe("runtime bootstrap", () => {
     await import("../src/index.js");
     await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(1));
 
-    expect(mocks.dashboardStart).toHaveBeenCalledWith(4321, process.cwd());
+    expect(mocks.dashboardStart).toHaveBeenCalledWith(3000, process.cwd());
     expect(mocks.watcherStart).toHaveBeenCalledOnce();
     const changeHandler = mocks.watcherOn.mock.calls.find(call => call[0] === "change")?.[1];
     changeHandler({ event: "change", path: `${process.cwd()}\\src\\a.ts` });

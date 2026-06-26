@@ -17,6 +17,7 @@ This is the latest known-good baseline at the time this guide was updated:
 | Local test count | 51 test files, 382 tests |
 | Coverage | 100% statements, branches, functions, and lines |
 | Local runtime health | `/api/health` returned `runtime.status: online` |
+| Operator dashboard port | `3000` (`http://127.0.0.1:3000`) |
 | Local semantic provider | `http://localhost:11434`, models `gemma3:12b` and `gemma3` |
 
 Treat this table as evidence, not a permanent guarantee. When any product behavior changes, rerun the gate and update this baseline.
@@ -94,6 +95,12 @@ Expected result:
 - Package dry-run passes.
 - `acceptance:package-runtime` installs the packed tarball into a temporary global prefix and serves `/api/health`.
 
+Port policy:
+
+- Operator dashboard/runtime: fixed to `3000`.
+- Dashboard E2E: fixed to `3999` by default through `PROMPT_REFINER_E2E_PORT` so browser tests do not collide with an operator runtime.
+- Package runtime smoke: intentionally uses an ephemeral random port to avoid CI and local conflicts. The `<port>` printed by that test is not the operator dashboard port and should not be copied into setup instructions.
+
 If this command fails, do not bypass it. Fix the failing behavior or document an explicit, reviewed exception in this file and in `docs/enterprise-release-gates.md`.
 
 ## 3. Check Global MCP Registration
@@ -156,6 +163,7 @@ Get-CimInstance Win32_Process |
   ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
 
 $env:PROMPT_REFINER_BACKGROUND = 'true'
+$env:PROMPT_REFINER_DASHBOARD_PORT = '3000'
 Start-Process -WindowStyle Hidden -FilePath node -ArgumentList (Join-Path $repo 'dist\src\index.js') -WorkingDirectory $repo
 ```
 
@@ -199,7 +207,7 @@ Expected result:
 Package runtime smoke passed: installed universal-refiner-8.0.0 and served /api/health on <port>.
 ```
 
-This catches missing production dependencies that are hidden by the local workspace.
+This catches missing production dependencies that are hidden by the local workspace. The `<port>` value is intentionally ephemeral for test isolation; the operator dashboard remains fixed at `http://127.0.0.1:3000`.
 
 ## 8. Confirm GitHub CI
 

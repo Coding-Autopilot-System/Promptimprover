@@ -27,6 +27,12 @@ For exact operator commands, current evidence, and the gate-to-CI mapping, see [
 12. Secret scanning finds no committed credentials.
 13. Linux, Windows, and dashboard E2E CI jobs pass before merge.
 
+## Port Policy
+
+- The operator dashboard/runtime port is fixed at `3000` and should be referenced as `http://127.0.0.1:3000`.
+- The dashboard browser E2E gate uses fixed test port `3999` by default to avoid colliding with an already-running operator dashboard.
+- Package-runtime acceptance may print a random ephemeral health-check port. That port is a test isolation detail, not a configuration value.
+
 ## Current Coverage Baseline
 
 The first measured baseline on June 14, 2026 exposed substantial untested production behavior:

@@ -14,7 +14,7 @@ test.describe('Intelligence Hub Dashboard UI', () => {
       }
     });
     
-    await page.goto('http://localhost:3999');
+    await page.goto('/');
   });
 
   test('should load the dashboard and display the sidebar and projects', async ({ page }) => {
@@ -68,7 +68,7 @@ test.describe('Intelligence Hub Dashboard UI', () => {
   test('should render newly ingested proxy prompts in the global stream', async ({ page, request }) => {
     // 1. Programmatically send a prompt via the proxy endpoint
     const uniquePrompt = `Automated Proxy Stream Test - ${Date.now()}`;
-    const proxyResponse = await request.post('http://localhost:3999/proxy/v1/chat/completions', {
+    const proxyResponse = await request.post('/proxy/v1/chat/completions', {
       data: {
         messages: [{ role: 'user', content: uniquePrompt }]
       }
