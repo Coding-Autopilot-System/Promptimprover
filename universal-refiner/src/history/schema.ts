@@ -56,6 +56,15 @@ CREATE TABLE IF NOT EXISTS executions (
   artifacts_json TEXT NOT NULL DEFAULT '{}'
 );
 
+CREATE TABLE IF NOT EXISTS terminal_outcomes (
+  goal_id TEXT PRIMARY KEY,
+  repo_id TEXT,
+  status TEXT NOT NULL,
+  evidence_json TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS tests (
   id TEXT PRIMARY KEY,
   execution_id TEXT NOT NULL,
