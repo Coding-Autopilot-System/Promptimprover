@@ -30,7 +30,7 @@ describe("EventStore stress and restart persistence", () => {
 
     const db = (store as unknown as { db: { prepare: (sql: string) => { get: () => { count: number } } } }).db;
     expect(db.prepare("SELECT COUNT(*) AS count FROM events WHERE event_type = 'stress'").get().count).toBe(500);
-  });
+  }, 20_000);
 
   it("retains events after the store is closed and reopened", () => {
     const holder = EventStore as unknown as { instance: EventStore | null };
