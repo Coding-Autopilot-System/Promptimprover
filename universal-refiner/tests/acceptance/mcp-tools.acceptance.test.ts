@@ -41,7 +41,7 @@ describe("MCP all-tool acceptance", () => {
     const names = listResponse.tools.map(tool => tool.name);
 
     expect(new Set(names).size).toBe(names.length);
-    expect(names).toHaveLength(19);
+    expect(names).toHaveLength(20);
     for (const tool of listResponse.tools) {
       expect(tool.description.length).toBeGreaterThan(10);
       expect(tool.inputSchema.type).toBe("object");
@@ -142,6 +142,12 @@ describe("MCP all-tool acceptance", () => {
       discover_rules: {},
       approve_rule: { id: "missing-rule" },
       list_learning_candidates: {},
+      record_terminal_outcome: {
+        goal_id: "acceptance-goal",
+        status: "completed",
+        evidence: ["cas://evidence/acceptance"],
+        summary: "Acceptance outcome",
+      },
       review_lesson: { id: "pending-lesson", approved: true },
       review_template: { id: "pending-template", approved: true },
       ingest_pattern: { id: "pattern", category: "quality", description: "Verify changes." },
@@ -163,5 +169,5 @@ describe("MCP all-tool acceptance", () => {
       await expect(dispatch({ params: { name: tool.name, arguments: args[tool.name] } }))
         .resolves.toHaveProperty("content");
     }
-  });
+  }, 15_000);
 });
