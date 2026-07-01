@@ -145,6 +145,24 @@ describe("EventStore", () => {
 
     expect(store.reviewLesson("repo", "lesson-goal-1", true)).toBe(true);
     expect(store.getRecentLessons("repo").map(lesson => lesson.id)).toContain("lesson-goal-1");
+
+    expect(store.recordTerminalOutcome({
+      goal_id: "goal-without-repo",
+      status: "completed",
+      evidence: ["cas://evidence/global"],
+      summary: "Global terminal outcome",
+    })).toBe(true);
+  });
+
+  it("rejects terminal outcomes without required evidence", () => {
+    const store = EventStore.getInstance();
+
+    expect(() => store.recordTerminalOutcome({
+      goal_id: "goal-without-evidence",
+      status: "failed",
+      evidence: [],
+      summary: "Missing evidence",
+    })).toThrow("Terminal outcomes require goal id, summary, and evidence.");
   });
 
   it("should persist learning candidate approval and rejection", () => {
