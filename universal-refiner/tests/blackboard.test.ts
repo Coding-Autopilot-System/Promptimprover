@@ -192,11 +192,32 @@ describe("AgenticBlackboard", () => {
   });
 
   it("uses the home-directory global store when no override is configured", () => {
+    const previousHome = process.env.HOME;
+    const previousProfile = process.env.USERPROFILE;
     delete process.env.PROMPT_REFINER_GLOBAL_DIR;
+    delete process.env.PROMPT_REFINER_PROJECT_DIR;
+    process.env.HOME = tmpDir;
+    process.env.USERPROFILE = tmpDir;
+    try {
+      const data = AgenticBlackboard.getGlobalData();
+      expect(data).toHaveProperty("logs");
+      expect(data).toHaveProperty("projects");
+      expect(Array.isArray(AgenticBlackboard.getLogs("."))).toBe(true);
+    } finally {
+      if (previousHome === undefined) delete process.env.HOME;
+      else process.env.HOME = previousHome;
+      if (previousProfile === undefined) delete process.env.USERPROFILE;
+      else process.env.USERPROFILE = previousProfile;
+    }
+  });
+
+  it("uses the isolated project fallback when only project storage is configured", () => {
+    delete process.env.PROMPT_REFINER_GLOBAL_DIR;
+    process.env.PROMPT_REFINER_PROJECT_DIR = tmpDir;
 
     const data = AgenticBlackboard.getGlobalData();
 
-    expect(data).toHaveProperty("logs");
-    expect(data).toHaveProperty("projects");
+    expect(data).toEqual({ logs: [], projects: [] });
+    expect(fs.existsSync(path.join(tmpDir, ".global-refiner", "global_history.json"))).toBe(true);
   });
 });
