@@ -1,17 +1,11 @@
-export const OPERATOR_DASHBOARD_PORT = 3000;
+const DEFAULT_DASHBOARD_PORT = 3000;
 
-export function resolveDashboardPort(
-  preferred = process.env.PROMPT_REFINER_DASHBOARD_PORT,
-  legacy = process.env.PORT,
-): number {
-  const configured = preferred || legacy;
-  if (!configured) {
-    return OPERATOR_DASHBOARD_PORT;
+export function resolveDashboardPort(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env.PROMPT_REFINER_DASHBOARD_PORT || env.PORT;
+  if (!raw) return DEFAULT_DASHBOARD_PORT;
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65_535) {
+    throw new Error(`Invalid dashboard port: ${raw}`);
   }
-
-  const port = Number.parseInt(configured, 10);
-  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
-    return OPERATOR_DASHBOARD_PORT;
-  }
-  return port;
+  return parsed;
 }

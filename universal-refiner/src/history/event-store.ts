@@ -212,6 +212,52 @@ export class EventStore {
     );
   }
 
+  recordTerminalOutcome(outcome: {
+    goal_id: string;
+    repo_id?: string;
+    status: "completed" | "failed" | "cancelled" | "blocked" | "budget_exhausted";
+    evidence: string[];
+    summary: string;
+    candidate?: {
+      id: string;
+      lesson_type: string;
+      title: string;
+      summary: string;
+      confidence: string;
+    };
+  }): boolean {
+    if (!outcome.goal_id.trim() || !outcome.summary.trim() || outcome.evidence.length === 0) {
+      throw new Error("Terminal outcomes require goal id, summary, and evidence.");
+    }
+    const now = new Date().toISOString();
+    const transaction = this.db.transaction(() => {
+      const inserted = this.db.prepare(`
+        INSERT OR IGNORE INTO terminal_outcomes (goal_id, repo_id, status, evidence_json, summary, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(outcome.goal_id, outcome.repo_id || null, outcome.status, JSON.stringify(outcome.evidence), outcome.summary, now);
+      if (inserted.changes === 0) return false;
+      if (outcome.candidate) {
+        this.recordLesson({
+          id: outcome.candidate.id,
+          repo_id: outcome.repo_id,
+          lesson_type: outcome.candidate.lesson_type,
+          title: outcome.candidate.title,
+          summary: outcome.candidate.summary,
+          evidence_json: JSON.stringify(outcome.evidence),
+          confidence: outcome.candidate.confidence,
+          source: "terminal_outcome",
+          approved: 0,
+        });
+      }
+      return true;
+    });
+    return transaction();
+  }
+
+  getTerminalOutcome(goalId: string): any | undefined {
+    return this.db.prepare(`SELECT * FROM terminal_outcomes WHERE goal_id = ?`).get(goalId);
+  }
+
   linkCommitToExecution(executionId: string, commitId: string) {
     const stmt = this.db.prepare(`
       INSERT OR IGNORE INTO execution_commits (execution_id, commit_id)

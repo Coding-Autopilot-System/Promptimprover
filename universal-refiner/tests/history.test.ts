@@ -120,6 +120,51 @@ describe("EventStore", () => {
     expect(store.getRecentLessons("repo").map(lesson => lesson.id)).toEqual(["approved"]);
   });
 
+  it("records one terminal outcome and gates its lesson candidate on approval", () => {
+    const store = EventStore.getInstance();
+    const outcome = {
+      goal_id: "goal-1",
+      repo_id: "repo",
+      status: "completed" as const,
+      evidence: ["cas://evidence/verification/1"],
+      summary: "All mandatory checks passed.",
+      candidate: {
+        id: "lesson-goal-1",
+        lesson_type: "quality",
+        title: "Candidate lesson",
+        summary: "Preserve deterministic verification.",
+        confidence: "high",
+      },
+    };
+
+    expect(store.recordTerminalOutcome(outcome)).toBe(true);
+    expect(store.recordTerminalOutcome(outcome)).toBe(false);
+    expect(store.getTerminalOutcome("goal-1").status).toBe("completed");
+    expect(store.getLearningCandidates("repo").lessons.map(lesson => lesson.id)).toEqual(["lesson-goal-1"]);
+    expect(store.getRecentLessons("repo")).toEqual([]);
+
+    expect(store.reviewLesson("repo", "lesson-goal-1", true)).toBe(true);
+    expect(store.getRecentLessons("repo").map(lesson => lesson.id)).toContain("lesson-goal-1");
+
+    expect(store.recordTerminalOutcome({
+      goal_id: "goal-without-repo",
+      status: "completed",
+      evidence: ["cas://evidence/global"],
+      summary: "Global terminal outcome",
+    })).toBe(true);
+  });
+
+  it("rejects terminal outcomes without required evidence", () => {
+    const store = EventStore.getInstance();
+
+    expect(() => store.recordTerminalOutcome({
+      goal_id: "goal-without-evidence",
+      status: "failed",
+      evidence: [],
+      summary: "Missing evidence",
+    })).toThrow("Terminal outcomes require goal id, summary, and evidence.");
+  });
+
   it("should persist learning candidate approval and rejection", () => {
     const store = EventStore.getInstance();
     store.recordLesson({

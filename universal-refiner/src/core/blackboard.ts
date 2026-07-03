@@ -36,7 +36,10 @@ export class AgenticBlackboard {
   private static listeners: Array<() => void> = [];
 
   private static getGlobalDir(): string {
-    return process.env.PROMPT_REFINER_GLOBAL_DIR || path.join(os.homedir(), ".refiner");
+    return process.env.PROMPT_REFINER_GLOBAL_DIR
+      || (process.env.PROMPT_REFINER_PROJECT_DIR
+        ? path.join(process.env.PROMPT_REFINER_PROJECT_DIR, ".global-refiner")
+        : path.join(os.homedir(), ".refiner"));
   }
 
   private static getGlobalLogPath(): string {
@@ -60,7 +63,10 @@ export class AgenticBlackboard {
   }
 
   private static getStoragePath(rootPath: string): string {
-    const projectRoot = this.findProjectRoot(rootPath);
+    const effectiveRoot = rootPath === "."
+      ? process.env.PROMPT_REFINER_PROJECT_DIR || rootPath
+      : rootPath;
+    const projectRoot = this.findProjectRoot(effectiveRoot);
     return path.join(projectRoot, this.DOT_REFINER, this.STORAGE_NAME);
   }
 

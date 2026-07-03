@@ -310,6 +310,20 @@ Output ONLY the JSON array. If no gaps, return [].`,
           inputSchema: { type: "object", properties: {} }
         },
         {
+          name: "record_terminal_outcome",
+          description: "Records one evidence-backed terminal goal outcome and an optional review-gated lesson candidate.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              goal_id: { type: "string" },
+              status: { type: "string", enum: ["completed", "failed", "cancelled", "blocked", "budget_exhausted"] },
+              evidence: { type: "array", items: { type: "string" }, minItems: 1 },
+              summary: { type: "string" }
+            },
+            required: ["goal_id", "status", "evidence", "summary"]
+          }
+        },
+        {
           name: "review_lesson",
           description: "Approves or rejects a proposed lesson before it can influence future prompts.",
           inputSchema: {
@@ -551,6 +565,19 @@ Output ONLY the JSON array. If no gaps, return [].`,
           case "list_learning_candidates": {
             const candidates = this.eventStore.getLearningCandidates(this.repository.id);
             return { content: [{ type: "text", text: JSON.stringify(candidates) }] };
+          }
+          case "record_terminal_outcome": {
+            const outcome = z.object({
+              goal_id: z.string().min(1),
+              status: z.enum(["completed", "failed", "cancelled", "blocked", "budget_exhausted"]),
+              evidence: z.array(z.string().min(1)).min(1),
+              summary: z.string().min(1),
+            }).parse(request.params.arguments);
+            const recorded = this.eventStore.recordTerminalOutcome({
+              ...outcome,
+              repo_id: this.repository.id,
+            });
+            return { content: [{ type: "text", text: JSON.stringify({ recorded, goal_id: outcome.goal_id }) }] };
           }
           case "review_lesson": {
             const { id, approved } = z.object({ id: z.string(), approved: z.boolean() }).parse(request.params.arguments);
