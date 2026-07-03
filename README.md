@@ -1,5 +1,8 @@
 # PromptImprover
 
+[![CI](https://github.com/Coding-Autopilot-System/Promptimprover/actions/workflows/ci.yml/badge.svg)](https://github.com/Coding-Autopilot-System/Promptimprover/actions/workflows/ci.yml) [![CodeQL](https://github.com/Coding-Autopilot-System/Promptimprover/actions/workflows/codeql.yml/badge.svg)](https://github.com/Coding-Autopilot-System/Promptimprover/actions/workflows/codeql.yml)
+
+
 [![CI](https://github.com/Coding-Autopilot-System/Promptimprover/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/Coding-Autopilot-System/Promptimprover/actions/workflows/ci.yml)
 [![Node 22](https://img.shields.io/badge/node-22-brightgreen)](https://nodejs.org/)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
