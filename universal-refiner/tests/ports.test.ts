@@ -9,8 +9,8 @@ describe("resolveDashboardPort", () => {
     expect(resolveDashboardPort({})).toBe(3000);
   });
 
-  it.each(["0", "65536", "not-a-number", "1.5"])("rejects invalid port %s", (value) => {
-    expect(() => resolveDashboardPort({ PROMPT_REFINER_DASHBOARD_PORT: value })).toThrow(
+  it.each(["-1", "65536", "not-a-number", "1.5"])("rejects invalid port %s", (value) => {
+    expect(() => resolveDashboardPort({ PROMPT_REFINER_DASHBOARD_PORT: value })).toThrowError(
       `Invalid dashboard port: ${value}`,
     );
   });

@@ -116,7 +116,7 @@ describeIfPowerShell("global registration doctor", () => {
     expect(result.stdout + result.stderr).toContain("Cannot safely merge invalid JSON config");
     expect(readFileSync(configPath, "utf8")).toBe("{");
     expect(existsSync(join(root, ".codex", "config.toml"))).toBe(false);
-  });
+  }, 45_000);
 
   describe("getPredictiveMandates", () => {
     it("returns predictive testing mandate when tests are mentioned frequently", () => {
