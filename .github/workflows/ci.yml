@@ -170,6 +170,7 @@ jobs:
     if: always()
     needs: [build-and-test, acceptance, dashboard-e2e, stress, windows, supply-chain]
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Require every enterprise gate
         env:
