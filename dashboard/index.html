@@ -35,13 +35,20 @@
         const tr = document.createElement('tr');
         const fmtTime = new Date(log.timestamp).toLocaleTimeString();
         const reason = log.reasoning_path && log.reasoning_path.length > 60 ? log.reasoning_path.slice(0,57) + '...' : log.reasoning_path;
+        const escapeHtml = (unsafe) => (unsafe || '').toString()
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+          
         tr.innerHTML = `
-          <td>${fmtTime}</td>
-          <td>${log.span_id || 'N/A'}</td>
-          <td>${log.persona || 'Unknown'}</td>
-          <td>${log.action_type || 'Unknown'}</td>
-          <td>${log.metrics?.total_tokens || 0}</td>
-          <td>${reason || ''}</td>
+          <td>${escapeHtml(fmtTime)}</td>
+          <td>${escapeHtml(log.span_id || 'N/A')}</td>
+          <td>${escapeHtml(log.persona || 'Unknown')}</td>
+          <td>${escapeHtml(log.action_type || 'Unknown')}</td>
+          <td>${escapeHtml(log.metrics?.total_tokens || 0)}</td>
+          <td>${escapeHtml(reason || '')}</td>
         `;
         tbody.appendChild(tr);
       });
