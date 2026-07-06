@@ -1,0 +1,8 @@
+{
+  "name": "promptimprover",
+  "version": "0.1.0",
+  "scripts": {
+    "dashboard": "powershell -NoProfile -ExecutionPolicy Bypass -File ./run-dashboard.ps1",
+    "dashboard-web": "node dashboard/server.js"
+  }
+}

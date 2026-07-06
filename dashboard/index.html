@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Promptimprover Swarm Dashboard</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>Promptimprover Swarm Dashboard</h1>
+  </header>
+  <main>
+    <table id="dashboard">
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Span</th>
+          <th>Persona</th>
+          <th>Action</th>
+          <th>Tokens</th>
+          <th>Reasoning</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </main>
+  <script>
+    async function fetchData() {
+      const resp = await fetch('/data');
+      const logs = await resp.json();
+      const tbody = document.querySelector('#dashboard tbody');
+      tbody.innerHTML = '';
+      logs.reverse().forEach(log => {
+        const tr = document.createElement('tr');
+        const fmtTime = new Date(log.timestamp).toLocaleTimeString();
+        const reason = log.reasoning_path && log.reasoning_path.length > 60 ? log.reasoning_path.slice(0,57) + '...' : log.reasoning_path;
+        ['time', 'span', 'persona', 'action', 'tokens', 'reasoning'].forEach((k, i) => {
+           const td = document.createElement('td');
+           const values = [fmtTime, log.span_id || 'N/A', log.persona || 'Unknown', log.action_type || 'Unknown', log.metrics?.total_tokens || 0, reason || ''];
+           td.textContent = values[i];
+           tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+    }
+    setInterval(fetchData, 2000);
+    fetchData();
+  </script>
+</body>
+</html>
