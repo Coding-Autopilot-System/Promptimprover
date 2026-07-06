@@ -35,14 +35,12 @@
         const tr = document.createElement('tr');
         const fmtTime = new Date(log.timestamp).toLocaleTimeString();
         const reason = log.reasoning_path && log.reasoning_path.length > 60 ? log.reasoning_path.slice(0,57) + '...' : log.reasoning_path;
-        tr.innerHTML = `
-          <td>${fmtTime}</td>
-          <td>${log.span_id || 'N/A'}</td>
-          <td>${log.persona || 'Unknown'}</td>
-          <td>${log.action_type || 'Unknown'}</td>
-          <td>${log.metrics?.total_tokens || 0}</td>
-          <td>${reason || ''}</td>
-        `;
+        ['time', 'span', 'persona', 'action', 'tokens', 'reasoning'].forEach((k, i) => {
+           const td = document.createElement('td');
+           const values = [fmtTime, log.span_id || 'N/A', log.persona || 'Unknown', log.action_type || 'Unknown', log.metrics?.total_tokens || 0, reason || ''];
+           td.textContent = values[i];
+           tr.appendChild(td);
+        });
         tbody.appendChild(tr);
       });
     }
