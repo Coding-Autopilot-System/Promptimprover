@@ -111,3 +111,5 @@ Non-loopback model endpoints are rejected unless `allowNonLoopback` is explicitl
 ## License
 
 MIT - see [LICENSE](LICENSE)
+
+<!-- docs-verified: 101f63d702e5c0ab8052c8e0c67a104d8edfbddb 2026-07-08 -->
