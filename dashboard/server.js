@@ -11,7 +11,6 @@ const PORT = 3000;
 
 // Helper: read last N lines from trace file
 async function readLastLines(filePath, maxLines = 20) {
-  if (!fs.existsSync(filePath)) return [];
   const stream = fs.createReadStream(filePath, { encoding: 'utf8' });
   let data = '';
   stream.on('data', chunk => { data += chunk; });
