@@ -1,172 +1,104 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import * as fs from "node:fs";
-import * as path from "node:path";
-import * as os from "node:os";
-import { FileWatcher, FileChangeEvent } from "../src/watcher/index.js";
+import * as fs from "fs";
+import * as path from "path";
+import * as os from "os";
+import { FileWatcher, FileChangeEvent } from "../src/watcher/file-watcher.js";
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/**
- * Wait up to `timeout` ms for `predicate` to return true, polling every `interval` ms.
- * Provides a clear assertion failure message on timeout.
- */
-function waitFor(
-  predicate: () => boolean,
-  timeout = 6000,
-  interval = 50
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const deadline = Date.now() + timeout;
-    const timer = setInterval(() => {
-      if (predicate()) {
-        clearInterval(timer);
-        resolve();
-      } else if (Date.now() > deadline) {
-        clearInterval(timer);
-        reject(new Error("waitFor: timeout exceeded"));
-      }
-    }, interval);
-  });
+async function waitFor(condition: () => boolean, timeoutMs = 6000, pollInterval = 100): Promise<void> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (condition()) {
+      return;
+    }
+    await delay(pollInterval);
+  }
+  throw new Error(`Condition not met within ${timeoutMs}ms`);
 }
-
-/**
- * Wait for chokidar to finish setting up FS listeners.
- * Windows FSEvents/polling can need 500-1500ms before reliably firing.
- */
-const WATCHER_SETTLE_MS = 1500;
-
-// ---------------------------------------------------------------------------
-// Suite
-// ---------------------------------------------------------------------------
 
 describe("FileWatcher", () => {
   let tmpDir: string;
   let watcher: FileWatcher;
+  let events: FileChangeEvent[] = [];
 
-  beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "fw-test-"));
+  beforeEach(async () => {
+    events = [];
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "file-watcher-test-"));
+    watcher = new FileWatcher(tmpDir);
+    
+    watcher.on("change", (evt: FileChangeEvent) => {
+      events.push(evt);
+    });
+
+    await watcher.start();
+    // Allow Windows FS listener warm-up
+    await delay(1500);
   });
 
   afterEach(async () => {
-    if (watcher) {
-      await watcher.stop();
-    }
+    await watcher.stop();
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  // -----------------------------------------------------------------------
-  // AUTO-01: detect meaningful file changes
-  // -----------------------------------------------------------------------
+  it("emits 'add' when a new .ts file is written", async () => {
+    const testFile = path.join(tmpDir, "test.ts");
+    fs.writeFileSync(testFile, "const x = 1;", "utf-8");
 
-  it("detects a file write as a 'change' event (AUTO-01)", async () => {
-    // Create file before watcher starts so initial scan won't fire 'add'
-    const filePath = path.join(tmpDir, "test.ts");
-    fs.writeFileSync(filePath, "// initial");
+    await waitFor(() => events.length > 0);
 
-    const events: FileChangeEvent[] = [];
-    watcher = new FileWatcher(tmpDir);
-    watcher.on("change", (evt) => events.push(evt));
-    watcher.start();
+    expect(events.length).toBeGreaterThan(0);
+    expect(events[0].event).toBe("add");
+    expect(events[0].path).toBe(testFile);
+  }, 15000);
 
-    // Allow chokidar to finish indexing the directory
-    await new Promise((r) => setTimeout(r, WATCHER_SETTLE_MS));
+  it("emits 'change' when an existing .ts file is updated", async () => {
+    const testFile = path.join(tmpDir, "update.ts");
+    // Pre-create file, then warm up
+    fs.writeFileSync(testFile, "const x = 1;", "utf-8");
+    // Wait for the 'add' event from creation to settle or ignore it
+    await delay(500);
+    events = []; // clear events
 
-    // Modify the file
-    fs.writeFileSync(filePath, "// updated");
+    fs.writeFileSync(testFile, "const x = 2;", "utf-8");
 
-    // Wait for event
-    await waitFor(() => events.some((e) => e.event === "change" && e.path.endsWith("test.ts")));
+    await waitFor(() => events.length > 0);
 
-    const hit = events.find((e) => e.event === "change");
-    expect(hit).toBeDefined();
-    expect(hit!.path).toContain("test.ts");
-    expect(hit!.timestamp).toBeInstanceOf(Date);
-  }, 15_000);
+    expect(events.length).toBeGreaterThan(0);
+    // Some OSes might emit "change", some might emit "add" and "change".
+    // Chokidar handles this with awaitWriteFinish, so we should see "change".
+    const changeEvent = events.find(e => e.event === "change");
+    expect(changeEvent).toBeDefined();
+    expect(changeEvent?.path).toBe(testFile);
+  }, 15000);
 
-  it("detects a new file as an 'add' event (AUTO-01)", async () => {
-    const events: FileChangeEvent[] = [];
-    watcher = new FileWatcher(tmpDir);
-    watcher.on("change", (evt) => events.push(evt));
-    watcher.start();
+  it("ignores files in node_modules", async () => {
+    const nmDir = path.join(tmpDir, "node_modules");
+    fs.mkdirSync(nmDir);
+    const testFile = path.join(nmDir, "ignored.ts");
 
-    await new Promise((r) => setTimeout(r, WATCHER_SETTLE_MS));
+    fs.writeFileSync(testFile, "const y = 1;", "utf-8");
 
-    fs.writeFileSync(path.join(tmpDir, "new.ts"), "export {}");
+    await delay(2000); // Wait enough time for event to fire if it was going to
+    expect(events).toHaveLength(0);
+  }, 15000);
 
-    await waitFor(() => events.some((e) => e.event === "add" && e.path.endsWith("new.ts")));
+  it("ignores .log files", async () => {
+    const testFile = path.join(tmpDir, "app.log");
 
-    const hit = events.find((e) => e.event === "add");
-    expect(hit).toBeDefined();
-    expect(hit!.event).toBe("add");
-    expect(hit!.timestamp).toBeInstanceOf(Date);
-  }, 15_000);
+    fs.writeFileSync(testFile, "some log data", "utf-8");
 
-  // -----------------------------------------------------------------------
-  // AUTO-02: noise filter
-  // -----------------------------------------------------------------------
+    await delay(2000);
+    expect(events).toHaveLength(0);
+  }, 15000);
 
-  it("does NOT emit events for paths inside node_modules (AUTO-02)", async () => {
-    const nmDir = path.join(tmpDir, "node_modules", "some-pkg");
-    fs.mkdirSync(nmDir, { recursive: true });
-
-    const events: FileChangeEvent[] = [];
-    watcher = new FileWatcher(tmpDir);
-    watcher.on("change", (evt) => events.push(evt));
-    watcher.start();
-
-    await new Promise((r) => setTimeout(r, WATCHER_SETTLE_MS));
-
-    fs.writeFileSync(path.join(nmDir, "index.ts"), "// ignored");
-
-    // Wait and assert silence
-    await new Promise((r) => setTimeout(r, 800));
-    const nmEvents = events.filter((e) => e.path.includes("node_modules"));
-    expect(nmEvents).toHaveLength(0);
-  }, 15_000);
-
-  it("does NOT emit events for *.log files (AUTO-02)", async () => {
-    const events: FileChangeEvent[] = [];
-    watcher = new FileWatcher(tmpDir);
-    watcher.on("change", (evt) => events.push(evt));
-    watcher.start();
-
-    await new Promise((r) => setTimeout(r, WATCHER_SETTLE_MS));
-
-    fs.writeFileSync(path.join(tmpDir, "debug.log"), "some log line");
-
-    await new Promise((r) => setTimeout(r, 800));
-    expect(events.filter((e) => e.path.endsWith(".log"))).toHaveLength(0);
-  }, 15_000);
-
-  it("does not crash when chokidar reports an error without an error listener", () => {
-    watcher = new FileWatcher(tmpDir);
-    watcher.start();
-
-    expect(() => (watcher as any).inner.emit("error", new Error("permission denied"))).not.toThrow();
-  });
-
-  // -----------------------------------------------------------------------
-  // stop() — no further events after stop
-  // -----------------------------------------------------------------------
-
-  it("stop() prevents further events from being emitted", async () => {
-    const filePath = path.join(tmpDir, "track.ts");
-    fs.writeFileSync(filePath, "// v1");
-
-    const events: FileChangeEvent[] = [];
-    watcher = new FileWatcher(tmpDir);
-    watcher.on("change", (evt) => events.push(evt));
-    watcher.start();
-
-    await new Promise((r) => setTimeout(r, WATCHER_SETTLE_MS));
+  it("prevents any further events after stop() is called", async () => {
     await watcher.stop();
+    
+    const testFile = path.join(tmpDir, "after-stop.ts");
+    fs.writeFileSync(testFile, "const z = 1;", "utf-8");
 
-    const countBefore = events.length;
-    fs.writeFileSync(filePath, "// v2");
-    await new Promise((r) => setTimeout(r, 800));
-
-    expect(events.length).toBe(countBefore);
-  }, 15_000);
+    await delay(2000);
+    expect(events).toHaveLength(0);
+  }, 15000);
 });

@@ -23,6 +23,7 @@ describe("semantic providers", () => {
     expect(() => new LocalOpenAiProvider({
       baseUrl: "https://example.com/v1",
       models: ["gemma3:12b"],
+      apiKey: null,
       timeoutMs: 1000,
       temperature: 0.2,
       allowNonLoopback: false,
@@ -39,11 +40,13 @@ describe("semantic providers", () => {
     expect(() => new LocalOpenAiProvider({
       ...options,
       baseUrl: "not a valid URL",
+      apiKey: null,
       allowNonLoopback: false,
     })).toThrow(/loopback/);
     expect(() => new LocalOpenAiProvider({
       ...options,
       baseUrl: "https://example.com/v1",
+      apiKey: null,
       allowNonLoopback: true,
     })).not.toThrow();
   });
@@ -55,6 +58,7 @@ describe("semantic providers", () => {
     expect(() => new LocalOpenAiProvider({
       baseUrl,
       models: ["gemma3:12b"],
+      apiKey: null,
       timeoutMs: 1000,
       temperature: 0.2,
       allowNonLoopback: false,
@@ -63,12 +67,14 @@ describe("semantic providers", () => {
 
   it("falls back to the next configured local model", async () => {
     const requestedModels: string[] = [];
+    const observedHeaders: string[] = [];
     server = createServer((request, response) => {
       let body = "";
       request.on("data", chunk => body += chunk);
       request.on("end", () => {
         const payload = JSON.parse(body);
         requestedModels.push(payload.model);
+        observedHeaders.push(String(request.headers.authorization || ""));
         response.setHeader("content-type", "application/json");
         if (payload.model === "gemma3:12b") {
           response.statusCode = 503;
@@ -87,6 +93,7 @@ describe("semantic providers", () => {
     const provider = new LocalOpenAiProvider({
       baseUrl: `http://127.0.0.1:${port}/v1`,
       models: ["gemma3:12b", "gemma3:1b"],
+      apiKey: "shared-secret",
       timeoutMs: 1000,
       temperature: 0.2,
       allowNonLoopback: false,
@@ -95,6 +102,7 @@ describe("semantic providers", () => {
     const result = await provider.requestText({ taskName: "test", prompt: "hello", maxTokens: 10 });
 
     expect(requestedModels).toEqual(["gemma3:12b", "gemma3:1b"]);
+    expect(observedHeaders).toEqual(["Bearer shared-secret", "Bearer shared-secret"]);
     expect(result?.text).toBe("fallback response");
     expect(result?.model).toBe("gemma3:1b");
     expect(result?.fallbackFrom).toEqual(["gemma3:12b"]);
@@ -129,6 +137,7 @@ describe("semantic providers", () => {
     const provider = new LocalOpenAiProvider({
       baseUrl: `http://127.0.0.1:${port}/v1/`,
       models: ["bad"],
+      apiKey: null,
       timeoutMs: 1000,
       temperature: 0,
       allowNonLoopback: false,
@@ -147,6 +156,7 @@ describe("semantic providers", () => {
     const provider = new LocalOpenAiProvider({
       baseUrl: "http://localhost:11434/v1",
       models: ["non-string", "offline"],
+      apiKey: null,
       timeoutMs: 1000,
       temperature: 0,
       allowNonLoopback: false,

@@ -72,7 +72,9 @@ describe("ConfigManager", () => {
     const config = ConfigManager.getSemanticConfig(tmpDir);
     expect(config.baseUrl).toBe("http://localhost:9000/v1");
     expect(config.models).toEqual(["gemma3:12b", "gemma3:1b"]);
+    expect(config.apiKey).toBeNull();
     expect(config.allowNonLoopback).toBe(false);
+    expect(config.extraHeaders).toEqual({});
   });
 
   it("should merge semantic overrides with safe defaults", () => {
@@ -124,9 +126,11 @@ describe("ConfigManager", () => {
       mcpSamplingEnabled: false,
       baseUrl: "http://127.0.0.1:1234/v1",
       models: ["primary", "fallback"],
+      apiKey: null,
       timeoutMs: 1,
       temperature: 2,
       allowNonLoopback: true,
+      extraHeaders: {},
     });
   });
 
@@ -148,9 +152,34 @@ describe("ConfigManager", () => {
       mcpSamplingEnabled: true,
       baseUrl: "http://localhost:9000/v1",
       models: ["gemma3:12b", "gemma3:1b"],
+      apiKey: null,
       timeoutMs: 120000,
       temperature: 0.2,
       allowNonLoopback: false,
+      extraHeaders: {},
+    });
+  });
+
+  it("derives semantic remote settings from shared MAF/OpenRouter env vars", () => {
+    vi.stubEnv("MAF_BASE_URL", "https://openrouter.ai/api/v1");
+    vi.stubEnv("MAF_MODEL", "openai/gpt-4.1-mini");
+    vi.stubEnv("MAF_API_KEY", "provider-secret");
+    vi.stubEnv("OPENROUTER_HTTP_REFERER", "https://example.test/autogen");
+    vi.stubEnv("OPENROUTER_X_TITLE", "Autogen Prompt Improver");
+
+    expect(ConfigManager.getSemanticConfig(tmpDir)).toEqual({
+      localEnabled: true,
+      mcpSamplingEnabled: true,
+      baseUrl: "https://openrouter.ai/api/v1",
+      models: ["openai/gpt-4.1-mini"],
+      apiKey: "provider-secret",
+      timeoutMs: 120000,
+      temperature: 0.2,
+      allowNonLoopback: true,
+      extraHeaders: {
+        "HTTP-Referer": "https://example.test/autogen",
+        "X-Title": "Autogen Prompt Improver",
+      },
     });
   });
 

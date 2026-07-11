@@ -1,4 +1,4 @@
-import * as chokidar from 'chokidar';
+import { FileWatcher, FileChangeEvent } from "../watcher/file-watcher.js";
 import { CommitIngester } from "../history/commit-ingest.js";
 import { LessonExtractor } from "../history/lesson-extractor.js";
 import { CorrelationEngine } from "../history/correlation-engine.js";
@@ -13,7 +13,7 @@ import { ConfigManager } from "./config.js";
 import { TokenMinifier } from "../refiners/minifier.js";
 
 export class BackgroundAutonomyService {
-  private watcher: chokidar.FSWatcher | null = null;
+  private watcher: FileWatcher | null = null;
   private gitPoller: GitPoller | null = null;
   private debounceTimer: NodeJS.Timeout | null = null;
   private rootPath: string;
@@ -49,20 +49,10 @@ export class BackgroundAutonomyService {
     RuntimeLogger.info("Starting Background Autonomy Service...", { rootPath: this.rootPath });
     CommandCenterDashboard.log("Background Autonomy: Watching for changes...");
 
-    this.watcher = chokidar.watch(this.rootPath, {
-      ignored: [
-        /(^|[\/\\])\../, // dotfiles
-        '**/node_modules/**',
-        '**/dist/**',
-        '**/.git/**',
-      ],
-      persistent: true,
-      ignoreInitial: true,
-    });
-
-    this.watcher.on('all', (event, filePath) => {
-      RuntimeLogger.debug(`File change detected: ${event} ${filePath}`);
-      AutoPilotStatus.record(`File ${event}: ${filePath}`, "file_change");
+    this.watcher = new FileWatcher(this.rootPath);
+    this.watcher.on("change", (event: FileChangeEvent) => {
+      RuntimeLogger.debug(`File change detected: ${event.event} ${event.path}`);
+      AutoPilotStatus.record(`File ${event.event}: ${event.path}`, "file_change");
       this.triggerAutonomy();
     });
     this.watcher.on("error", (error) => {
@@ -71,6 +61,8 @@ export class BackgroundAutonomyService {
       RuntimeLogger.error("Background autonomy watcher failed", error);
       CommandCenterDashboard.log("Background Autonomy: Watcher degraded. See logs.");
     });
+    
+    this.watcher.start().catch((e) => RuntimeLogger.error("Failed to start watcher", e));
 
     this.gitPoller?.start();
     this.queue.enqueue(`autonomy:${this.rootPath}`, () => this.runCycles());
@@ -174,7 +166,7 @@ export class BackgroundAutonomyService {
 
   public stop() {
     if (this.watcher) {
-      this.watcher.close();
+      this.watcher.stop().catch((e) => RuntimeLogger.error("Error stopping watcher", e));
       this.watcher = null;
     }
     if (this.debounceTimer) {

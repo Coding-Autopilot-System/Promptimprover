@@ -1,8 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  watcher: { on: vi.fn(), close: vi.fn() },
-  watch: vi.fn(),
+  watcher: { on: vi.fn(), start: vi.fn(), stop: vi.fn() },
   ingest: vi.fn(),
   correlate: vi.fn(),
   extract: vi.fn(),
@@ -18,7 +17,7 @@ const mocks = vi.hoisted(() => ({
   pollerConstructor: vi.fn(),
 }));
 
-vi.mock("chokidar", () => ({ watch: mocks.watch }));
+vi.mock("../src/watcher/file-watcher.js", () => ({ FileWatcher: class { constructor() { return mocks.watcher; } } }));
 vi.mock("../src/history/commit-ingest.js", () => ({ CommitIngester: { ingestLatest: mocks.ingest } }));
 vi.mock("../src/history/correlation-engine.js", () => ({ CorrelationEngine: class { correlateAll = mocks.correlate; } }));
 vi.mock("../src/history/lesson-extractor.js", () => ({ LessonExtractor: class { extractNewLessons = mocks.extract; extractFailureLessons = mocks.extract; } }));
@@ -58,8 +57,9 @@ import { AutoPilotStatus } from "../src/core/autopilot-status.js";
 describe("BackgroundAutonomyService", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.watch.mockReturnValue(mocks.watcher);
     mocks.watcher.on.mockReturnValue(mocks.watcher);
+    mocks.watcher.start.mockResolvedValue(undefined);
+    mocks.watcher.stop.mockResolvedValue(undefined);
     mocks.ingest.mockResolvedValue(2);
     mocks.correlate.mockResolvedValue(undefined);
     mocks.extract.mockResolvedValue(undefined);
@@ -77,11 +77,11 @@ describe("BackgroundAutonomyService", () => {
     await service.idle();
     service.stop();
 
-    expect(mocks.watch).toHaveBeenCalledTimes(1);
+    expect(mocks.watcher.start).toHaveBeenCalledTimes(1);
     expect(mocks.ingest).toHaveBeenCalledWith("C:/repo", 100);
     expect(mocks.correlate).toHaveBeenCalledOnce();
     expect(mocks.extract).toHaveBeenCalledTimes(2);
-    expect(mocks.watcher.close).toHaveBeenCalledOnce();
+    expect(mocks.watcher.stop).toHaveBeenCalledOnce();
   });
 
   it("reports watcher degradation without throwing an unhandled error", () => {
@@ -123,9 +123,9 @@ describe("BackgroundAutonomyService", () => {
     mocks.correlate.mockRejectedValue(new Error("correlation failed"));
     const service = new BackgroundAutonomyService("C:/repo", vi.fn());
     service.start();
-    const changeHandler = mocks.watcher.on.mock.calls.find(call => call[0] === "all")?.[1];
-    changeHandler("change", "src/a.ts");
-    changeHandler("change", "src/b.ts");
+    const changeHandler = mocks.watcher.on.mock.calls.find(call => call[0] === "change")?.[1];
+    changeHandler({ event: "change", path: "src/a.ts" });
+    changeHandler({ event: "change", path: "src/b.ts" });
     await vi.runAllTimersAsync();
     await service.idle();
     service.stop();
@@ -173,8 +173,8 @@ describe("BackgroundAutonomyService", () => {
     }));
     const service = new BackgroundAutonomyService("C:/repo", vi.fn());
     service.start();
-    const changeHandler = mocks.watcher.on.mock.calls.find(call => call[0] === "all")?.[1];
-    changeHandler("change", "src/a.ts");
+    const changeHandler = mocks.watcher.on.mock.calls.find(call => call[0] === "change")?.[1];
+    changeHandler({ event: "change", path: "src/a.ts" });
     await vi.advanceTimersByTimeAsync(3000);
 
     expect(mocks.debug).toHaveBeenCalledWith("Background autonomy cycle coalesced", { rootPath: "C:/repo" });

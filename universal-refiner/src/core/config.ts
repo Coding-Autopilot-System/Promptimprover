@@ -15,9 +15,11 @@ export interface SemanticConfig {
   mcpSamplingEnabled: boolean;
   baseUrl: string;
   models: string[];
+  apiKey: string | null;
   timeoutMs: number;
   temperature: number;
   allowNonLoopback: boolean;
+  extraHeaders: Record<string, string>;
 }
 
 export class ConfigManager {
@@ -28,10 +30,71 @@ export class ConfigManager {
     mcpSamplingEnabled: true,
     baseUrl: "http://localhost:9000/v1",
     models: ["gemma3:12b", "gemma3:1b"],
+    apiKey: null,
     timeoutMs: 120000,
     temperature: 0.2,
     allowNonLoopback: false,
+    extraHeaders: {},
   };
+
+  private static readEnvSemanticBaseUrl(): string | null {
+    const env = process.env;
+    const raw = env.PROMPT_REFINER_BASE_URL
+      || env.MAF_BASE_URL
+      || env.GEMINI_BASE_URL
+      || env.OPENAI_BASE_URL
+      || env.OPENROUTER_BASE_URL
+      || "";
+    const value = raw.trim();
+    return value.length > 0 ? value : null;
+  }
+
+  private static readEnvSemanticModels(): string[] {
+    const env = process.env;
+    const raw = env.PROMPT_REFINER_MODELS
+      || env.MAF_MODEL_CANDIDATES
+      || env.MAF_MODEL
+      || env.GEMINI_MODEL
+      || env.OPENAI_MODEL
+      || "";
+    return raw
+      .split(",")
+      .map(value => value.trim())
+      .filter(Boolean);
+  }
+
+  private static readEnvSemanticApiKey(): string | null {
+    const env = process.env;
+    const raw = env.PROMPT_REFINER_API_KEY
+      || env.MAF_API_KEY
+      || env.GEMINI_API_KEY
+      || env.OPENROUTER_API_KEY
+      || env.OPENAI_API_KEY
+      || "";
+    const value = raw.trim();
+    return value.length > 0 ? value : null;
+  }
+
+  private static readEnvSemanticAllowNonLoopback(): boolean | null {
+    const raw = (process.env.PROMPT_REFINER_ALLOW_NON_LOOPBACK || "").trim().toLowerCase();
+    if (!raw) {
+      return null;
+    }
+    return raw === "1" || raw === "true" || raw === "yes";
+  }
+
+  private static readEnvSemanticHeaders(): Record<string, string> {
+    const headers: Record<string, string> = {};
+    const referer = (process.env.OPENROUTER_HTTP_REFERER || "").trim();
+    const title = (process.env.OPENROUTER_X_TITLE || "").trim();
+    if (referer) {
+      headers["HTTP-Referer"] = referer;
+    }
+    if (title) {
+      headers["X-Title"] = title;
+    }
+    return headers;
+  }
 
   static loadConfig(rootPath: string = "."): RefinerConfig {
     const configPath = this.resolveConfigPath(rootPath);
@@ -73,20 +136,39 @@ export class ConfigManager {
   static getSemanticConfig(rootPath: string = "."): SemanticConfig {
     const semantic = this.loadConfig(rootPath).semantic || {};
     const defaults = this.DEFAULT_SEMANTIC_CONFIG;
+    const envBaseUrl = this.readEnvSemanticBaseUrl();
+    const envModels = this.readEnvSemanticModels();
+    const envApiKey = this.readEnvSemanticApiKey();
+    const envAllowNonLoopback = this.readEnvSemanticAllowNonLoopback();
+    const envHeaders = this.readEnvSemanticHeaders();
     return {
       localEnabled: typeof semantic.localEnabled === "boolean" ? semantic.localEnabled : defaults.localEnabled,
       mcpSamplingEnabled: typeof semantic.mcpSamplingEnabled === "boolean" ? semantic.mcpSamplingEnabled : defaults.mcpSamplingEnabled,
-      baseUrl: typeof semantic.baseUrl === "string" && semantic.baseUrl.trim() ? semantic.baseUrl.trim() : defaults.baseUrl,
+      baseUrl: typeof semantic.baseUrl === "string" && semantic.baseUrl.trim()
+        ? semantic.baseUrl.trim()
+        : (envBaseUrl || defaults.baseUrl),
       models: Array.isArray(semantic.models) && semantic.models.length > 0 && semantic.models.every(model => typeof model === "string" && model.trim())
         ? semantic.models.map(model => model.trim())
-        : defaults.models,
+        : (envModels.length > 0 ? envModels : defaults.models),
+      apiKey: typeof semantic.apiKey === "string" && semantic.apiKey.trim()
+        ? semantic.apiKey.trim()
+        : envApiKey,
       timeoutMs: typeof semantic.timeoutMs === "number" && Number.isFinite(semantic.timeoutMs) && semantic.timeoutMs > 0
         ? semantic.timeoutMs
         : defaults.timeoutMs,
       temperature: typeof semantic.temperature === "number" && Number.isFinite(semantic.temperature) && semantic.temperature >= 0 && semantic.temperature <= 2
         ? semantic.temperature
         : defaults.temperature,
-      allowNonLoopback: typeof semantic.allowNonLoopback === "boolean" ? semantic.allowNonLoopback : defaults.allowNonLoopback,
+      allowNonLoopback: typeof semantic.allowNonLoopback === "boolean"
+        ? semantic.allowNonLoopback
+        : (envAllowNonLoopback ?? Boolean(envBaseUrl && !envBaseUrl.startsWith("http://localhost") && !envBaseUrl.startsWith("http://127.0.0.1") && !envBaseUrl.startsWith("http://[::1]")) || defaults.allowNonLoopback),
+      extraHeaders: typeof semantic.extraHeaders === "object" && semantic.extraHeaders !== null && !Array.isArray(semantic.extraHeaders)
+        ? Object.fromEntries(
+            Object.entries(semantic.extraHeaders).filter(
+              ([key, value]) => key.trim().length > 0 && typeof value === "string" && value.trim().length > 0,
+            ),
+          )
+        : envHeaders,
     };
   }
 

@@ -137,7 +137,13 @@
     <!-- VIEW: GLOBAL STREAM -->
     <div id="view-stream" class="main-view">
       <div class="grid">
-        <div class="card col-12">
+        <div class="card col-4">
+          <h2>Auto-Pilot Status</h2>
+          <div id="autopilot-status-box"></div>
+          <h2 style="margin-top: 2rem;">Recent Autonomous Activity</h2>
+          <div class="terminal" id="autopilot-activity" style="height: 340px; font-size: 0.75rem;"></div>
+        </div>
+        <div class="card col-8">
           <h2>Unified Event Timeline</h2>
           <div class="terminal" id="timeline-terminal" style="height: 500px;"></div>
         </div>
@@ -287,6 +293,21 @@
       const stateRes = await fetch(`/api/state?project=${encodeURIComponent(currentProject)}`);
       const state = await stateRes.json();
 
+      const apRes = await fetch(`/api/autopilot`);
+      const apState = await apRes.json();
+
+      // Update pulse bar indicator
+      const pbAutopilot = document.getElementById('pb-autopilot');
+      if (apState.state === 'busy') {
+        pbAutopilot.className = 'pulse-dot success pulse';
+      } else if (apState.state === 'active') {
+        pbAutopilot.className = 'pulse-dot accent';
+      } else if (apState.state === 'error') {
+        pbAutopilot.className = 'pulse-dot diff-del';
+      } else {
+        pbAutopilot.className = 'pulse-dot dim';
+      }
+
       document.getElementById('project-badge').textContent = projectName(currentProject).toUpperCase();
       document.getElementById('project-dna').innerHTML = `
         <div class="stat-row"><span class="stat-label">STACK</span><span>${escapeHtml(state.stack)}</span></div>
@@ -364,6 +385,23 @@
             </div>
           `;
         }).join('') || '<div style="padding: 3rem; text-align: center; color: var(--dim); font-size: 0.9rem; font-style: italic;">The stream is quiet. Waiting for AI events...</div>';
+
+        document.getElementById('autopilot-status-box').innerHTML = `
+          <div class="stat-row"><span class="stat-label">STATE</span><span style="color: ${apState.state === 'error' ? '#ef4444' : apState.state === 'idle' ? 'var(--dim)' : 'var(--accent)'}; font-weight: bold;">${apState.state.toUpperCase()}</span></div>
+          <div class="stat-row"><span class="stat-label">LAST CYCLE</span><span>${apState.lastCycleAt ? new Date(apState.lastCycleAt).toLocaleTimeString() : 'Never'}</span></div>
+          <div class="stat-row"><span class="stat-label">CYCLES RUN</span><span>${apState.stats.cyclesCompleted}</span></div>
+          <div class="stat-row"><span class="stat-label">COMMITS SCANNED</span><span>${apState.stats.commitsIngested}</span></div>
+          <div class="stat-row"><span class="stat-label">LESSONS MINED</span><span>${apState.stats.lessonsExtracted}</span></div>
+        `;
+
+        document.getElementById('autopilot-activity').innerHTML = apState.activity.map(a => `
+            <div class="log-line" style="padding: 0.25rem 0.75rem;">
+              <span class="log-ts" style="min-width: 60px;">${new Date(a.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+              <div style="flex-grow: 1;">
+                <div style="white-space: pre-wrap; line-height: 1.4;">${escapeHtml(a.message)}</div>
+              </div>
+            </div>
+        `).join('') || '<div style="padding: 1rem; text-align: center; color: var(--dim); font-style: italic;">No recent activity.</div>';
       }
 
       if (currentView === 'intelligence') {

@@ -19,6 +19,7 @@ describe("semantic provider acceptance", () => {
     const provider = new LocalOpenAiProvider({
       baseUrl: fake.baseUrl,
       models: [model],
+      apiKey: null,
       timeoutMs: 1000,
       temperature: 0,
       allowNonLoopback: false,
@@ -34,6 +35,7 @@ describe("semantic provider acceptance", () => {
     const local = new LocalOpenAiProvider({
       baseUrl: fake.baseUrl,
       models: ["gemma3:12b", "gemma3:1b"],
+      apiKey: null,
       timeoutMs: 1000,
       temperature: 0,
       allowNonLoopback: false,

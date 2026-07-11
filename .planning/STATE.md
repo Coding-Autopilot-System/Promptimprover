@@ -23,8 +23,8 @@ progress:
 ## Current Position
 
 - **Phase**: 1 - Real-time File System Watcher
-- **Plan**: TBD
-- **Status**: Starting milestone
+- **Plan**: 01-01-PLAN.md
+- **Status**: Planning
 - **Progress**: [░░░░░░░░░░░░░░░░░░░░] 0%
 
 ## Performance Metrics

@@ -266,9 +266,35 @@ export class CommandCenterDashboard {
     };
   }
 
+const rateLimitCache = new Map<string, { count: number; resetAt: number }>();
+
+function rateLimiter(limit: number, windowMs: number) {
+  return async (c: any, next: any) => {
+    const ip = c.req.header("x-forwarded-for") || c.req.header("x-real-ip") || "127.0.0.1";
+    const now = Date.now();
+    let record = rateLimitCache.get(ip);
+
+    if (!record || now > record.resetAt) {
+      record = { count: 0, resetAt: now + windowMs };
+    }
+
+    record.count++;
+    rateLimitCache.set(ip, record);
+
+    if (record.count > limit) {
+      return c.json({ error: "Too many requests, please try again later." }, 429);
+    }
+
+    await next();
+  };
+}
+
   static createApp(defaultPath = ".") {
     this.rootPath = defaultPath;
     const app = new Hono();
+
+    app.use("/api/*", rateLimiter(100, 60000));
+    app.use("/proxy/*", rateLimiter(50, 60000));
 
     app.get("/api/state", async (c) => {
       const selectedPath = this.resolveSelectedPath(c.req.query("project"));

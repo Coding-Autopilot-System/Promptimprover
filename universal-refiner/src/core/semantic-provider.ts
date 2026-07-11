@@ -24,9 +24,11 @@ export interface SemanticProvider {
 export interface LocalOpenAiProviderOptions {
   baseUrl: string;
   models: string[];
+  apiKey: string | null;
   timeoutMs: number;
   temperature: number;
   allowNonLoopback: boolean;
+  extraHeaders?: Record<string, string>;
 }
 
 function isLoopbackUrl(rawUrl: string): boolean {
@@ -60,7 +62,11 @@ export class LocalOpenAiProvider implements SemanticProvider {
       try {
         const response = await fetch(`${this.options.baseUrl.replace(/\/$/, "")}/chat/completions`, {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: {
+            "content-type": "application/json",
+            ...(this.options.apiKey ? { "authorization": `Bearer ${this.options.apiKey}` } : {}),
+            ...(this.options.extraHeaders || {}),
+          },
           body: JSON.stringify({
             model,
             messages: [{ role: "user", content: request.prompt }],
