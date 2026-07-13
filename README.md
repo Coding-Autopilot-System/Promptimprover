@@ -1,18 +1,30 @@
-# PromptImprover
+# ?? Promptimprover: MCP-First Prompt Governance
 
-[![CI](https://github.com/Coding-Autopilot-System/Promptimprover/actions/workflows/ci.yml/badge.svg)](https://github.com/Coding-Autopilot-System/Promptimprover/actions/workflows/ci.yml) [![CodeQL](https://github.com/Coding-Autopilot-System/Promptimprover/actions/workflows/codeql.yml/badge.svg)](https://github.com/Coding-Autopilot-System/Promptimprover/actions/workflows/codeql.yml)
+![Visual Diagram](docs/assets/concept.png)
 
 
-[![CI](https://github.com/Coding-Autopilot-System/Promptimprover/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/Coding-Autopilot-System/Promptimprover/actions/workflows/ci.yml)
-[![Node 22](https://img.shields.io/badge/node-22-brightgreen)](https://nodejs.org/)
-[![MIT License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+![Build Status](https://github.com/Coding-Autopilot-System/Promptimprover/actions/workflows/ci.yml/badge.svg)
+![CodeQL](https://github.com/Coding-Autopilot-System/Promptimprover/actions/workflows/codeql.yml/badge.svg)
+![Node 22](https://img.shields.io/badge/node-22-brightgreen)
+![Version](https://img.shields.io/badge/version-3.0.0--elite-blue)
 
-Part of the [Coding-Autopilot-System](https://github.com/Coding-Autopilot-System) ecosystem:
-[gsd-orchestrator](https://github.com/Coding-Autopilot-System/gsd-orchestrator) | [autogen](https://github.com/Coding-Autopilot-System/autogen)
+**Promptimprover** is an elite Model Context Protocol (MCP) server that acts as an intelligent prompt governance layer. It intercepts, classifies, and refines raw engineering prompts using deep repository context before they ever reach an LLM, ensuring maximum execution success.
 
-PromptImprover is an MCP-first prompt governance layer for engineering workflows. It sits between an AI client and execution tools, adds repo-aware context, applies prompt refinement rules, and records evidence that can be used to improve future runs.
+## ?? Elite Features
+* **Universal Refiner MCP**: Runs cross-CLI and editor-agnostic via the official MCP specification.
+* **Intelligent Governance**: Evaluates raw prompts against past failures and auto-injects missing context.
+* **Zero-Knowledge Evidence Engine**: Tracks execution outcomes and uses RLAIF (Reinforcement Learning from AI Feedback) to refine prompts dynamically.
 
-This repository is strongest as a portfolio demonstration of three ideas:
+## ? Quickstart
+1. Ensure Node 22 is installed.
+2. Build the MCP Server:
+   \\\ash
+   npm install && npm run build
+   \\\
+3. Link to your MCP client:
+   \\\ash
+   npm run link-mcp
+   \\\
 
 - prompt governance before code execution
 - MCP-based integration instead of editor-specific glue
