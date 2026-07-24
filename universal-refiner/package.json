@@ -45,7 +45,7 @@
     "license": "MIT",
     "type": "module",
     "dependencies": {
-        "@hono/node-server": "^1.19.13",
+        "@hono/node-server": "^2.0.10",
         "@lancedb/lancedb": "^0.30.0",
         "@modelcontextprotocol/sdk": "^1.29.0",
         "better-sqlite3": "^12.8.0",
